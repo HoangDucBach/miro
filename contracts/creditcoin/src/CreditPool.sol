@@ -23,7 +23,6 @@ contract CreditPool {
 
     IERC20 public immutable usdc;
     IStreamVerifier public immutable verifier;
-    address public owner;
 
     mapping(address => uint256) public debt; // principal + flat interest
     mapping(address => uint256) public pendingGarnish; // owed from salary withdrawals
@@ -42,18 +41,12 @@ contract CreditPool {
     event StreamFrozen(address indexed borrower);
     event LoanFullyRepaid(address indexed borrower, uint256 newRepaidLoans);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "not owner");
-        _;
-    }
-
     modifier onlyVerifier() {
         require(msg.sender == address(verifier), "not verifier");
         _;
     }
 
     constructor(address usdc_, address verifier_) {
-        owner = msg.sender;
         usdc = IERC20(usdc_);
         verifier = IStreamVerifier(verifier_);
     }

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {StreamVerifierASC} from "../src/StreamVerifierASC.sol";
 import {EmployerRegistry} from "../src/EmployerRegistry.sol";
 import {EvmV1Decoder} from "../src/libs/EvmV1Decoder.sol";
@@ -105,7 +106,7 @@ contract ASCTest is Test {
     function test_setPool_onlyOwner() public {
         StreamVerifierASC fresh = new StreamVerifierASC(address(registry), SEPOLIA_CHAIN_KEY, streamContract);
         vm.prank(address(0xdead));
-        vm.expectRevert("not owner");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xdead)));
         fresh.setPool(address(0x1234));
     }
 

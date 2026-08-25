@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EvmV1Decoder} from "./libs/EvmV1Decoder.sol";
 import {INativeQueryVerifier, NativeQueryVerifierLib} from "./libs/NativeQueryVerifier.sol";
 import {IEmployerRegistry} from "./interfaces/IEmployerRegistry.sol";
@@ -13,13 +14,12 @@ import {IStreamVerifier} from "./interfaces/IStreamVerifier.sol";
 /// @dev Canonical ASC pattern: replay check → cryptographic verify → validate contents
 ///      (receipt status, tx type, emitter) → business logic. Split-contract architecture:
 ///      this contract verifies; CreditPool holds money logic (§2.3.2 / §2.3.3).
-contract StreamVerifierASC is IStreamVerifier {
+contract StreamVerifierASC is IStreamVerifier, Ownable {
     INativeQueryVerifier public immutable VERIFIER;
     IEmployerRegistry public immutable registry;
     ICreditPool public pool; // set once by owner, after CreditPool is deployed
     uint64 public immutable SOURCE_CHAIN_KEY; // Sepolia chainKey, resolved via SDK at deploy time
     address public immutable SOURCE_STREAM_CONTRACT; // only accept logs from our SalaryStream
-    address public owner;
 
     mapping(bytes32 => bool) public processedQueries; // replay protection, keyed on txKey
 
@@ -45,13 +45,7 @@ contract StreamVerifierASC is IStreamVerifier {
     event StreamRegistered(address indexed borrower, address indexed employer, uint256 deposit);
     event StreamEventProcessed(bytes32 indexed txKey, bytes32 indexed sig, address indexed borrower);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "not owner");
-        _;
-    }
-
-    constructor(address registry_, uint64 sourceChainKey_, address sourceStreamContract_) {
-        owner = msg.sender;
+    constructor(address registry_, uint64 sourceChainKey_, address sourceStreamContract_) Ownable(msg.sender) {
         registry = IEmployerRegistry(registry_);
         VERIFIER = NativeQueryVerifierLib.getVerifier();
         SOURCE_CHAIN_KEY = sourceChainKey_;

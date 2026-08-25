@@ -2,6 +2,8 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 
 contract TestUSDCTest is Test {
@@ -87,7 +89,7 @@ contract TestUSDCTest is Test {
 
     function test_faucet_emitsTransferEventFromZeroAddress() public {
         vm.expectEmit(true, true, false, true);
-        emit TestUSDC.Transfer(address(0), alice, 10_000 * 1e6);
+        emit IERC20.Transfer(address(0), alice, 10_000 * 1e6);
 
         vm.prank(alice);
         usdc.faucet();
@@ -110,7 +112,7 @@ contract TestUSDCTest is Test {
 
     function test_transfer_revertsOnInsufficientBalance() public {
         vm.prank(alice);
-        vm.expectRevert("insufficient balance");
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, alice, 0, 1));
         usdc.transfer(bob, 1);
     }
 
@@ -140,7 +142,7 @@ contract TestUSDCTest is Test {
         usdc.faucet();
 
         vm.expectEmit(true, true, false, true);
-        emit TestUSDC.Transfer(alice, bob, 100 * 1e6);
+        emit IERC20.Transfer(alice, bob, 100 * 1e6);
 
         vm.prank(alice);
         usdc.transfer(bob, 100 * 1e6);
@@ -179,7 +181,7 @@ contract TestUSDCTest is Test {
 
     function test_approve_emitsEvent() public {
         vm.expectEmit(true, true, false, true);
-        emit TestUSDC.Approval(alice, spender, 500 * 1e6);
+        emit IERC20.Approval(alice, spender, 500 * 1e6);
 
         vm.prank(alice);
         usdc.approve(spender, 500 * 1e6);
@@ -205,7 +207,9 @@ contract TestUSDCTest is Test {
         usdc.approve(spender, 100 * 1e6);
 
         vm.prank(spender);
-        vm.expectRevert("allowance exceeded");
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, spender, 100 * 1e6, 101 * 1e6)
+        );
         usdc.transferFrom(alice, bob, 101 * 1e6);
     }
 
@@ -214,7 +218,7 @@ contract TestUSDCTest is Test {
         usdc.approve(spender, 1000 * 1e6); // allowance granted but alice has zero balance
 
         vm.prank(spender);
-        vm.expectRevert("insufficient balance");
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, alice, 0, 100 * 1e6));
         usdc.transferFrom(alice, bob, 100 * 1e6);
     }
 
@@ -247,7 +251,7 @@ contract TestUSDCTest is Test {
         usdc.faucet();
 
         vm.prank(spender);
-        vm.expectRevert("allowance exceeded");
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, spender, 0, 1));
         usdc.transferFrom(alice, bob, 1);
     }
 
