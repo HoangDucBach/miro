@@ -2,9 +2,8 @@
 pragma solidity ^0.8.23;
 
 /// @notice Employer-funded, per-second vesting salary stream on Ethereum Sepolia.
-/// @dev Single source contract emits ALL cross-chain events (Attestcoin best practice:
-///      one contract, unambiguous non-standard event names) so the Creditcoin-side
-///      StreamVerifierASC only ever has to watch one `emitter` address.
+/// @dev One contract emits all three lifecycle events so StreamVerifierASC only has to
+///      watch a single emitter address.
 contract SalaryStream {
     struct Stream {
         address sender; // employer
@@ -51,10 +50,8 @@ contract SalaryStream {
         require(stopTime > block.timestamp, "stopTime in past");
 
         uint256 duration = stopTime - block.timestamp;
-        // Integer division truncates: ratePerSecond * duration <= msg.value, almost always
-        // strictly less. The remainder (at most `duration - 1` wei) is never claimable by the
-        // recipient and never refunded to the sender on cancel — it stays stranded in the
-        // contract. Accepted as an MVP tradeoff; see SalaryStream.t.sol for the invariant test.
+        // Rounds down, so ratePerSecond * duration can be a few wei less than msg.value.
+        // That dust never gets paid out to anyone and stays stuck in the contract.
         uint256 ratePerSecond = msg.value / duration;
         require(ratePerSecond > 0, "deposit too small for duration");
 

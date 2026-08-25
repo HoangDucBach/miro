@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Vendored verbatim from gluwa/attestcoin-protocol-examples (formerly usc-testnet-bridge-examples),
-// contracts/sol/VerifierInterface.sol, commit as of 2026-08-25. Attribution per spec §2.3.2 — do not
-// modify without re-syncing against upstream.
-// https://github.com/gluwa/attestcoin-protocol-examples/blob/main/contracts/sol/VerifierInterface.sol
+// Vendored from gluwa/attestcoin-protocol-examples, contracts/sol/VerifierInterface.sol.
+// Resync from upstream instead of editing this directly.
 pragma solidity ^0.8.23;
 
 interface INativeQueryVerifier {

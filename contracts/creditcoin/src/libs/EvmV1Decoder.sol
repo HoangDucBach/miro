@@ -1,10 +1,6 @@
-// Vendored verbatim from @gluwa/usc-contracts@0.1.2, contracts/decoding/EvmV1Decoder.sol
-// (pinned version per gluwa/attestcoin-protocol-examples package.json as of 2026-08-25).
-// Attribution per spec §2.3.2 — do not modify without re-syncing against upstream.
-// NOTE: functions here are `public`, not `internal` — as an imported Solidity library this
-// requires library linking at build/deploy time (forge handles this automatically for
-// `forge build`/`forge script`, but confirm library address linking on first deploy — see
-// docs/technical-spec.md §2.3 "Known scaffolding gap").
+// Vendored from @gluwa/usc-contracts@0.1.2, contracts/decoding/EvmV1Decoder.sol.
+// Resync from upstream instead of editing this directly.
+// Functions here are public, not internal, so Foundry needs to link this library at build time.
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 

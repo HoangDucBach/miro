@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-/// @notice Stake-gated employer allowlist. MVP proxy for KYC: only streams whose
-///         `sender` is a staked, registered employer count toward collateral (§1.6).
-///         Roadmap: attestation-based employer identity, slashing.
+/// @notice Stake-gated employer allowlist. Only streams from a staked, registered
+///         employer count toward collateral. Simple stand-in for KYC for now, could
+///         move to attestation-based identity and slashing later.
 contract EmployerRegistry {
     uint256 public constant MIN_STAKE = 100 ether; // 100 tCTC
 
@@ -23,8 +23,9 @@ contract EmployerRegistry {
         return stakeOf[employer] >= MIN_STAKE;
     }
 
-    /// @dev No timelock in MVP (stretch goal per §2.3.4) — deregistering mid-active-stream
-    ///      is a known gap; StreamVerifierASC snapshots `isVerified` only at stream creation.
+    /// @dev No timelock, so an employer can deregister mid-stream. StreamVerifierASC only
+    ///      checks isVerified once, at stream creation, so this doesn't retroactively
+    ///      invalidate an active stream.
     function deregister() external {
         uint256 stake = stakeOf[msg.sender];
         require(stake > 0, "not registered");

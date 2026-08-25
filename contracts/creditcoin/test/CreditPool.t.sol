@@ -70,8 +70,8 @@ contract CreditPoolTest is Test {
     }
 
     function test_creditLimit_stepsUpWithRepaidLoans() public {
-        // repaidLoans is private state driven only by _checkFullRepay; drive it via
-        // borrow -> repay cycles with zero garnish so each cycle increments cleanly.
+        // repaidLoans only moves via _checkFullRepay, so drive it with borrow then repay
+        // cycles that carry zero garnish, so each cycle increments cleanly.
         for (uint256 i = 0; i < 4; i++) {
             uint256 expectedBps = 5000 + i * 500; // 50, 55, 60, 65
             assertEq(pool.creditLimit(borrower), 6000 * 1e6 * expectedBps / 10_000);
@@ -127,9 +127,8 @@ contract CreditPoolTest is Test {
                 pool.repay(owed);
                 vm.stopPrank();
             } catch {
-                // Pool ran out of tUSDC liquidity for this fuzzed remainingLocked — stop
-                // growing repaidLoans, the final assertion still holds on whatever LTV
-                // tier was reached.
+                // Pool ran out of tUSDC liquidity for this fuzzed remainingLocked, so stop
+                // growing repaidLoans. The final assertion still holds either way.
                 break;
             }
         }
@@ -206,7 +205,7 @@ contract CreditPoolTest is Test {
     }
 
     function test_borrow_interestRoundsDown() public {
-        // 7 * 500 / 10000 = 0.35 -> truncates to 0
+        // 7 * 500 / 10000 rounds down to 0
         vm.prank(borrower);
         pool.borrow(7);
         assertEq(pool.debt(borrower), 7); // no interest charged on dust amounts
@@ -230,8 +229,8 @@ contract CreditPoolTest is Test {
         try pool.borrow(amount) {
             assertLe(pool.debt(borrower), limit);
         } catch {
-            // Either "exceeds credit limit" or the pool lacking enough tUSDC liquidity for
-            // this fuzzed amount ("insufficient balance") — either way, no debt recorded.
+            // Either exceeds credit limit or the pool lacks enough tUSDC liquidity for this
+            // fuzzed amount. Either way, no debt should be recorded.
             assertEq(pool.debt(borrower), 0);
         }
     }
@@ -271,9 +270,8 @@ contract CreditPoolTest is Test {
     }
 
     function test_onSalaryWithdrawn_multipleCallsCanExceedDebt() public {
-        // Each call caps against *current* debt independently, so repeated withdrawals
-        // before settlement can push pendingGarnish above debt — this is the scenario
-        // that made the settleGarnish floor-at-debt fix necessary (see CreditPool.sol).
+        // Each call caps against current debt independently, so repeated withdrawals
+        // before settlement can push pendingGarnish above debt.
         vm.prank(borrower);
         pool.borrow(1000 * 1e6); // debt = 1050e6
 
@@ -391,9 +389,8 @@ contract CreditPoolTest is Test {
         pool.settleGarnish(0);
     }
 
-    /// @dev Regression test for the settleGarnish underflow bug: repeated onSalaryWithdrawn
-    ///      calls can leave pendingGarnish > debt; settling in full must floor debt at 0
-    ///      rather than reverting and permanently freezing the borrower.
+    /// @dev Repeated onSalaryWithdrawn calls can leave pendingGarnish above debt. Settling
+    ///      in full should floor debt at 0 instead of reverting.
     function test_settleGarnish_whenPendingExceedsDebt_floorsDebtAtZeroWithoutReverting() public {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6); // debt = 1050e6
@@ -416,7 +413,7 @@ contract CreditPoolTest is Test {
         assertEq(pool.debt(borrower), 0);
     }
 
-    /// @dev Second trigger path for the same bug: repay() reduces debt independently of
+    /// @dev Second trigger path: repay() reduces debt independently of
     ///      pendingGarnish, so settling garnish afterwards must still not underflow.
     function test_settleGarnish_afterFullRepay_doesNotRevert() public {
         vm.prank(borrower);
@@ -427,7 +424,7 @@ contract CreditPoolTest is Test {
         _giveUSDC(borrower, 1050 * 1e6);
         vm.startPrank(borrower);
         usdc.approve(address(pool), 1050 * 1e6);
-        pool.repay(1050 * 1e6); // debt -> 0, pendingGarnish untouched (300e6)
+        pool.repay(1050 * 1e6); // debt drops to 0, pendingGarnish stays at 300e6
         vm.stopPrank();
 
         assertEq(pool.debt(borrower), 0);
@@ -454,7 +451,7 @@ contract CreditPoolTest is Test {
         _giveUSDC(borrower, 750 * 1e6);
         vm.startPrank(borrower);
         usdc.approve(address(pool), 750 * 1e6);
-        pool.repay(750 * 1e6); // debt: 1050 -> 300
+        pool.repay(750 * 1e6); // debt goes from 1050 to 300
         vm.stopPrank();
 
         assertEq(pool.repaidLoans(borrower), 0); // pendingGarnish still nonzero
@@ -510,11 +507,11 @@ contract CreditPoolTest is Test {
         _giveUSDC(borrower, owed);
         vm.startPrank(borrower);
         usdc.approve(address(pool), owed);
-        pool.repay(owed); // debt -> 0, but pendingGarnish still 300e6
+        pool.repay(owed); // debt drops to 0, pendingGarnish still 300e6
         vm.stopPrank();
 
         assertEq(pool.debt(borrower), 0);
-        assertEq(pool.repaidLoans(borrower), 0); // not yet — garnish still outstanding
+        assertEq(pool.repaidLoans(borrower), 0); // not yet, garnish still outstanding
     }
 
     function test_repay_revertsAboveDebt() public {

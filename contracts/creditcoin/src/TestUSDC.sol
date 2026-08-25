@@ -17,7 +17,7 @@ contract TestUSDC is ERC20 {
         return _DECIMALS;
     }
 
-    /// @notice Public faucet for demo/LP seeding — rate-limited, not access-controlled.
+    /// @notice Faucet for demo and LP seeding, rate-limited but open to anyone.
     function faucet() external {
         require(
             lastFaucetClaim[msg.sender] == 0 || block.timestamp >= lastFaucetClaim[msg.sender] + FAUCET_COOLDOWN,

@@ -10,9 +10,8 @@ interface IERC20 {
 }
 
 /// @notice Holds LP liquidity, issues salary-stream-backed credit lines, and tracks
-///         wage-garnishment obligations recorded by StreamVerifierASC on salary
-///         withdrawal (§2.3.3). MVP: flat interest, no LP shares math, no liquidation
-///         engine — enforcement gap is honestly bounded by the LTV buffer (§1.6).
+///         wage-garnishment obligations recorded by StreamVerifierASC on salary withdrawal.
+///         Flat interest, no LP shares math, no liquidation engine yet.
 contract CreditPool {
     uint256 public constant BASE_LTV_BPS = 5000; // 50%
     uint256 public constant LTV_STEP_BPS = 500; // +5% per fully-repaid loan
@@ -73,10 +72,9 @@ contract CreditPool {
         emit Borrowed(msg.sender, amount, newDebt);
     }
 
-    /// @notice Called by StreamVerifierASC when a proven SalaryStreamWithdrawn event
-    ///         is processed. Records the garnishment obligation; the actual tUSDC only
-    ///         moves once the borrower calls settleGarnish (§1.6 cross-chain enforcement
-    ///         gap: this contract cannot seize funds on Ethereum).
+    /// @notice Called by StreamVerifierASC when a proven SalaryStreamWithdrawn event is
+    ///         processed. Only records the obligation, the tUSDC moves later when the
+    ///         borrower calls settleGarnish. Can't seize funds on Ethereum directly.
     function onSalaryWithdrawn(address b, uint256 salary) external onlyVerifier {
         if (debt[b] == 0) return;
         uint256 owed = min(salary * GARNISH_BPS / BPS_DENOM, debt[b]);
@@ -94,10 +92,8 @@ contract CreditPool {
         require(usdc.transferFrom(msg.sender, address(this), amount), "usdc transferFrom failed");
 
         pendingGarnish[msg.sender] -= amount;
-        // pendingGarnish is capped against `debt` independently on each onSalaryWithdrawn
-        // call, so repeated withdrawals (or an intervening repay()) can leave
-        // pendingGarnish > debt. Floor at debt so this never underflows-reverts and
-        // permanently strands the borrower unable to clear their garnish obligation.
+        // pendingGarnish can end up bigger than debt (repeated withdrawals, or a repay()
+        // in between), so floor at debt to avoid underflow here.
         debt[msg.sender] -= min(amount, debt[msg.sender]);
 
         emit GarnishSettled(msg.sender, amount, debt[msg.sender]);

@@ -21,8 +21,8 @@ contract TestUSDCTest is Test {
     // =================================================================
 
     function test_faucet_firstClaimSucceedsAtDefaultLowTimestamp() public {
-        // Regression test: forge's default block.timestamp is 1, which is less than
-        // FAUCET_COOLDOWN (1 days) — the very first claim must not be blocked by that.
+        // Forge's default block.timestamp is 1, which is less than FAUCET_COOLDOWN.
+        // The very first claim must still go through.
         assertEq(block.timestamp, 1);
 
         vm.prank(alice);

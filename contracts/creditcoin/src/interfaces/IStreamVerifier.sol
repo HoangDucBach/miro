@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-/// @notice View surface CreditPool relies on to size credit limits (§2.3.3 creditLimit()).
+/// @notice What CreditPool reads to size a borrower's credit limit.
 interface IStreamVerifier {
-    /// @notice Value still LOCKED (unvested) for this borrower's active stream.
-    /// @dev Conservative by design: vested-but-unwithdrawn value is excluded because it
-    ///      will be garnished on withdrawal anyway rather than counted as collateral.
+    /// @notice Unvested value still locked in this borrower's active stream.
+    /// @dev Vested but unwithdrawn value doesn't count here, it gets garnished on
+    ///      withdrawal instead of counted as collateral.
     function remainingLocked(address user) external view returns (uint256);
 }

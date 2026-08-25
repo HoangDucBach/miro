@@ -9,10 +9,8 @@ import {TestUSDC} from "../src/TestUSDC.sol";
 
 /// forge script script/Deploy.s.sol --rpc-url cc3_testnet --private-key $CC3_DEPLOYER_PRIVATE_KEY --broadcast
 ///
-/// Requires STREAM_CONTRACT (Sepolia SalaryStream address) and SOURCE_CHAIN_KEY
-/// (Sepolia's Creditcoin-internal chainKey, resolved off-chain via
-/// PrecompileChainInfoProvider.getSupportedChains() — see apps/worker/src/chain.ts)
-/// as env vars before running.
+/// Needs STREAM_CONTRACT (Sepolia SalaryStream address) and SOURCE_CHAIN_KEY (Sepolia's
+/// Creditcoin chainKey, fetched off-chain via getSupportedChains) set as env vars first.
 contract DeployScript is Script {
     function run()
         external

@@ -33,7 +33,7 @@ contract MockNativeQueryVerifier is INativeQueryVerifier {
     }
 }
 
-/// @notice Records every ASC -> pool call so tests can assert routing without a real CreditPool.
+/// @notice Records every ASC to pool call so tests can assert routing without a real CreditPool.
 contract MockCreditPool is ICreditPool {
     struct WithdrawnCall {
         address borrower;
@@ -220,7 +220,7 @@ contract ASCTest is Test {
     }
 
     // =================================================================
-    // processStreamEvent — happy paths
+    // processStreamEvent happy paths
     // =================================================================
 
     function test_processStreamEvent_created_registersStream() public {
@@ -267,8 +267,8 @@ contract ASCTest is Test {
     }
 
     function test_processStreamEvent_multipleLogsInOneReceipt_bothRouted() public {
-        // Created and Withdrawn for the same borrower in a single receipt — Created must be
-        // routed first so Withdrawn's `rec.exists` check passes within the same call.
+        // Created and Withdrawn for the same borrower in one receipt. Created has to be
+        // routed first so Withdrawn's rec.exists check passes in the same call.
         EvmV1Decoder.LogEntryTuple[] memory logs = new EvmV1Decoder.LogEntryTuple[](2);
         logs[0] = _createdLog(1, employer, borrower, 6000e6, 1e6);
         logs[1] = _withdrawnLog(1, borrower, 500e6);
@@ -284,7 +284,7 @@ contract ASCTest is Test {
     }
 
     // =================================================================
-    // processStreamEvent — guards and reverts
+    // processStreamEvent guards and reverts
     // =================================================================
 
     function test_processStreamEvent_wrongChain_reverts() public {
@@ -310,8 +310,8 @@ contract ASCTest is Test {
 
     function test_processStreamEvent_invalidProof_reverts() public {
         bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
-        // MockNativeQueryVerifier.INVALID_ROOT is the sentinel that makes the mock revert —
-        // read before vm.expectRevert, which only watches the very next call.
+        // INVALID_ROOT makes the mock revert. Read it before vm.expectRevert, which only
+        // watches the very next call.
         bytes32 invalidRoot = MockNativeQueryVerifier(PRECOMPILE_ADDR).INVALID_ROOT();
 
         vm.expectRevert("mock verifier: invalid proof");
@@ -329,8 +329,8 @@ contract ASCTest is Test {
     }
 
     function test_processStreamEvent_sameRootDifferentBlockHeight_isNotReplay() public {
-        // txKey depends on (chainKey, blockHeight, txIndex) — a different blockHeight with the
-        // same proof root must be treated as a distinct event, not rejected as a replay.
+        // txKey depends on chainKey, blockHeight and txIndex, so a different blockHeight
+        // with the same proof root is a distinct event, not a replay.
         bytes memory tx1 = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
         bytes memory tx2 = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, 100e6)), 1);
         bytes32 root = keccak256("tx-shared-root");
@@ -376,13 +376,13 @@ contract ASCTest is Test {
         EvmV1Decoder.LogEntryTuple memory unrelatedLog = _buildLog(streamContract, topics, abi.encode(uint256(1)));
 
         bytes memory tx_ = _buildEncodedTx(_singleLog(unrelatedLog), 1);
-        // Must not revert — unrecognized signatures are silently skipped.
+        // Must not revert, unrecognized signatures are just skipped.
         assertTrue(_submit(tx_, keccak256("tx-unrelated"), 100));
     }
 
     function test_processStreamEvent_cancelled_currentlyReverts_knownGap() public {
-        // Documents the open TODO in _handleCancelled (SalaryStreamCancelled doesn't carry
-        // the recipient address, so it can't yet be routed) — see StreamVerifierASC.sol.
+        // SalaryStreamCancelled doesn't carry the recipient address yet, so this handler
+        // always reverts. See the TODO in _handleCancelled.
         bytes memory tx_ = _buildEncodedTx(_singleLog(_cancelledLog(1, 1000e6, 5000e6)), 1);
 
         vm.expectRevert("cancel routing: TODO wire recipient lookup");
@@ -405,10 +405,9 @@ contract ASCTest is Test {
         assertEq(asc.remainingLocked(borrower), deposit - rate * 1000);
     }
 
-    // NOTE: remainingLocked's `s.cancelled` branch has no test here — the only way to set
-    // `cancelled = true` is via _handleCancelled, which currently reverts unconditionally
-    // (see test_processStreamEvent_cancelled_currentlyReverts_knownGap). Storage-slot
-    // manipulation was considered and rejected: StreamRecord packs `cancelled` and `exists`
-    // into the same slot, making a hand-guessed slot index fragile and liable to silently
-    // corrupt `exists` instead. Add this case once the cancel-routing TODO is resolved.
+    // remainingLocked's cancelled branch has no test here. The only way to set
+    // cancelled = true is _handleCancelled, which always reverts right now. Storage-slot
+    // manipulation would work but StreamRecord packs cancelled and exists into the same
+    // slot, so a hand-guessed slot index could silently corrupt exists too. Add this once
+    // cancel routing is fixed.
 }

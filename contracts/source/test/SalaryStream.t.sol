@@ -59,7 +59,7 @@ contract SalaryStreamTest is Test {
     }
 
     // ---------------------------------------------------------------
-    // createStream — happy path
+    // createStream happy path
     // ---------------------------------------------------------------
 
     function test_createStream_setsFieldsCorrectly() public {
@@ -110,7 +110,7 @@ contract SalaryStreamTest is Test {
     }
 
     // ---------------------------------------------------------------
-    // createStream — reverts
+    // createStream reverts
     // ---------------------------------------------------------------
 
     function test_createStream_revertsOnZeroDeposit() public {
@@ -153,7 +153,7 @@ contract SalaryStreamTest is Test {
     }
 
     // ---------------------------------------------------------------
-    // balanceOf — vesting math
+    // balanceOf vesting math
     // ---------------------------------------------------------------
 
     function test_balanceOf_zeroAtStart() public {
@@ -180,8 +180,7 @@ contract SalaryStreamTest is Test {
         vm.warp(block.timestamp + SIX_MONTHS + 365 days); // long past stopTime
         (,,, uint256 ratePerSecond,,,,) = stream.streams(id);
 
-        // Balance never exceeds ratePerSecond * duration, which is <= deposit due to
-        // integer-division truncation (see SalaryStream.sol createStream comment).
+        // Balance never exceeds ratePerSecond * duration, which rounds down from deposit.
         assertEq(stream.balanceOf(id), ratePerSecond * SIX_MONTHS);
         assertLe(stream.balanceOf(id), 6 ether);
     }
@@ -493,7 +492,7 @@ contract SalaryStreamTest is Test {
     }
 
     // ---------------------------------------------------------------
-    // Reentrancy — checks-effects-interactions ordering
+    // Reentrancy safety
     // ---------------------------------------------------------------
 
     function test_withdraw_reentrancy_cannotDoubleSpend() public {
@@ -552,7 +551,7 @@ contract SalaryStreamTest is Test {
 
         vm.warp(block.timestamp + 30 days);
 
-        uint256 vested0 = stream.balanceOf(id0); // evaluate before pranking — vm.prank is single-shot
+        uint256 vested0 = stream.balanceOf(id0); // evaluate before pranking, vm.prank is single-shot
         vm.prank(employee);
         stream.withdraw(id0, vested0);
 

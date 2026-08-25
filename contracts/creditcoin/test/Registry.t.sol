@@ -197,8 +197,8 @@ contract RegistryTest is Test {
     function test_deregister_reentrancy_cannotDoubleWithdraw() public {
         ReentrantDeregisterer attacker = new ReentrantDeregisterer();
         attacker.arm(registry);
-        // Fund only via the call's value — dealing ETH separately would leave attacker
-        // holding leftover balance never spent on the stake, muddying the assertion below.
+        // Fund only via the call's value, dealing ETH separately would leave attacker
+        // holding leftover balance never spent on the stake and muddy the assertion below.
         attacker.register{value: 100 ether}();
 
         uint256 registryBalanceBefore = address(registry).balance;
@@ -220,7 +220,7 @@ contract RegistryTest is Test {
     function testFuzz_register_isVerifiedIffStakeAtLeastMin(uint256 stakeAmount) public {
         stakeAmount = bound(stakeAmount, 0, 1000 ether);
         vm.deal(employer, stakeAmount);
-        uint256 minStake = registry.MIN_STAKE(); // read before pranking — vm.prank is single-shot
+        uint256 minStake = registry.MIN_STAKE(); // read before pranking, vm.prank is single-shot
 
         vm.prank(employer);
         if (stakeAmount < minStake) {

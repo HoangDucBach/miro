@@ -8,12 +8,12 @@ import {IEmployerRegistry} from "./interfaces/IEmployerRegistry.sol";
 import {ICreditPool} from "./interfaces/ICreditPool.sol";
 import {IStreamVerifier} from "./interfaces/IStreamVerifier.sol";
 
-/// @notice Attestcoin Standard Contract (ASC) for StreamCredit. Verifies SalaryStream
-///         lifecycle events emitted on Ethereum Sepolia via the Block Prover Precompile,
-///         then routes them into EmployerRegistry-gated StreamRecords and CreditPool calls.
-/// @dev Canonical ASC pattern: replay check → cryptographic verify → validate contents
-///      (receipt status, tx type, emitter) → business logic. Split-contract architecture:
-///      this contract verifies; CreditPool holds money logic (§2.3.2 / §2.3.3).
+/// @notice Verifies SalaryStream lifecycle events emitted on Sepolia through the Block
+///         Prover Precompile, then routes them into EmployerRegistry-gated StreamRecords
+///         and CreditPool calls.
+/// @dev Flow per call: check replay, verify the proof, validate receipt status and tx type,
+///      then run business logic. This contract only verifies and stores stream state,
+///      CreditPool owns the money logic.
 contract StreamVerifierASC is IStreamVerifier, Ownable {
     INativeQueryVerifier public immutable VERIFIER;
     IEmployerRegistry public immutable registry;
@@ -82,26 +82,23 @@ contract StreamVerifierASC is IStreamVerifier, Ownable {
         INativeQueryVerifier.ContinuityProof memory continuityProof =
             INativeQueryVerifier.ContinuityProof({lowerEndpointDigest: lowerEndpointDigest, roots: continuityRoots});
 
-        // 1. Replay protection — queryId = keccak(chainKey, blockHeight, txIndex), where
-        //    txIndex comes from the precompile itself (canonical pattern, USCBase._computeQueryId
-        //    in gluwa/attestcoin-protocol-examples).
+        // Replay check first. txKey is derived from a txIndex the precompile computes
+        // itself, so it can't be spoofed by submitting a different Merkle path.
         bytes32 txKey = _computeQueryId(chainKey, blockHeight, merkleProof);
         require(!processedQueries[txKey], "already processed");
 
-        // 2. Cryptographic verification (synchronous, reverts on invalid)
+        // Verify the inclusion proof. Reverts on failure.
         require(VERIFIER.verifyAndEmit(chainKey, blockHeight, encodedTransaction, merkleProof, continuityProof), "proof invalid");
         processedQueries[txKey] = true;
 
-        // 3. MANDATORY: inclusion != success — check receipt status.
-        //    The precompile only proves the tx was included; it says nothing about
-        //    whether it reverted, so a failed source tx must never be treated as valid.
+        // The precompile only proves the tx was included, not that it succeeded. A failed
+        // source tx must not be treated as a real event, so check the receipt status too.
         require(
             EvmV1Decoder.isValidTransactionType(EvmV1Decoder.getTransactionType(encodedTransaction)), "bad tx type"
         );
         EvmV1Decoder.ReceiptFields memory receipt = EvmV1Decoder.decodeReceiptFields(encodedTransaction);
         require(receipt.receiptStatus == 1, "source tx failed");
 
-        // 4. Extract our events only, from our contract only
         _routeLogs(receipt, txKey);
         return true;
     }
@@ -161,11 +158,8 @@ contract StreamVerifierASC is IStreamVerifier, Ownable {
     }
 
     function _handleCancelled(EvmV1Decoder.LogEntry memory, bytes32 txKey) internal pure {
-        // NOTE: SalaryStreamCancelled does not carry the recipient in its topics/data
-        // (see SalaryStream.sol event signature), so cancellation is routed by borrower
-        // lookup at the CreditPool call site in a fuller implementation. Left as a TODO:
-        // extend the source event to index `recipient` so this handler can resolve it
-        // without an extra registry/lookup mapping.
+        // TODO: SalaryStreamCancelled doesn't index the recipient, so there's no borrower
+        // to route this to yet. Add an indexed recipient to the source event to fix this.
         txKey;
         revert("cancel routing: TODO wire recipient lookup");
     }
@@ -176,14 +170,12 @@ contract StreamVerifierASC is IStreamVerifier, Ownable {
         if (!s.exists || s.cancelled) return 0;
         uint256 t = block.timestamp >= s.stopTime ? s.stopTime : block.timestamp;
         uint256 vested = (t - s.startTime) * s.ratePerSecond;
-        return s.deposit - vested; // unvested = guaranteed-future portion
+        return s.deposit - vested; // portion not vested yet
     }
 
-    /// @dev Canonical replay-key derivation, matching USCBase._computeQueryId in
-    ///      gluwa/attestcoin-protocol-examples: packs (chainKey, blockHeight, txIndex) into
-    ///      a 72-byte buffer and hashes it. txIndex comes from the precompile's own
-    ///      calculateTxIndex — never derived client-side — so the key can't be spoofed by
-    ///      submitting a mismatched Merkle path.
+    /// @dev Packs chainKey, blockHeight and txIndex into a 72-byte buffer and hashes it.
+    ///      txIndex comes from the precompile's calculateTxIndex, not the caller, so the
+    ///      key can't be spoofed with a mismatched Merkle path.
     function _computeQueryId(uint64 chainKey, uint64 blockHeight, INativeQueryVerifier.MerkleProof memory merkleProof)
         internal
         view
