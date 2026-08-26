@@ -1,4 +1,4 @@
-# StreamCredit
+# Miro
 
 Borrow against your on-chain salary stream. Employers pay via locked payment streams on
 Ethereum; the [Attestcoin Protocol](https://creditcoin.org) cryptographically proves those
@@ -34,16 +34,16 @@ Deployed addresses and the deploy workaround needed for CC3 Testnet are in
 ## Repo layout
 
 ```
-streamcredit/
+miro/
 ├── contracts/
 │   ├── source/       # Foundry project — SalaryStream.sol (Ethereum Sepolia)
 │   └── creditcoin/   # Foundry project — StreamVerifierASC, CreditPool, EmployerRegistry, TestUSDC (CC3 Testnet)
 ├── packages/
-│   ├── shared/        # @streamcredit/shared — ABIs, addresses, event topics, types
+│   ├── shared/        # @miro/shared — ABIs, addresses, event topics, types
 │   └── config/        # shared tsconfig / eslint presets
 ├── apps/
-│   ├── worker/         # @streamcredit/worker — the Attestcoin relay (listeners → proof → submit)
-│   └── web/            # @streamcredit/web — dApp UI (deferred)
+│   ├── worker/         # @miro/worker — the Attestcoin relay (listeners → proof → submit)
+│   └── web/            # @miro/web — dApp UI (deferred)
 └── docs/                # product spec, technical spec, integration writeup, demo script
 ```
 

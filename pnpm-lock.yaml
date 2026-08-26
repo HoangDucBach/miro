@@ -20,7 +20,7 @@ importers:
       '@gluwa/usc-sdk':
         specifier: 0.18.0
         version: 0.18.0
-      '@streamcredit/shared':
+      '@miro/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       bullmq:

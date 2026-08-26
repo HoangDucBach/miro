@@ -1,5 +1,5 @@
 {
-  "name": "streamcredit",
+  "name": "miro",
   "private": true,
   "version": "0.1.0",
   "description": "Salary-stream-backed on-chain credit, verified cross-chain via the Attestcoin Protocol.",
@@ -17,9 +17,9 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "worker": "pnpm --filter @streamcredit/worker dev",
-    "worker:e2e": "pnpm --filter @streamcredit/worker e2e",
-    "web": "pnpm --filter @streamcredit/web dev"
+    "worker": "pnpm --filter @miro/worker dev",
+    "worker:e2e": "pnpm --filter @miro/worker e2e",
+    "web": "pnpm --filter @miro/web dev"
   },
   "devDependencies": {
     "turbo": "^2.1.0",

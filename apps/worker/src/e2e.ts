@@ -6,7 +6,7 @@ import {
   CREDIT_POOL_ABI,
   TEST_USDC_ABI,
   EMPLOYER_REGISTRY_ABI,
-} from "@streamcredit/shared";
+} from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
   ATTESTATION_TIMEOUT_MS,

@@ -1,5 +1,5 @@
 import { Contract, NonceManager, Wallet, type JsonRpcProvider } from "ethers";
-import { STREAM_VERIFIER_ASC_ABI } from "@streamcredit/shared";
+import { STREAM_VERIFIER_ASC_ABI } from "@miro/shared";
 import type { ProofData } from "./proof.js";
 
 const MAX_RETRIES = 3;

@@ -1,4 +1,4 @@
-# StreamCredit — Product Spec
+# Miro — Product Spec
 
 > **BUIDL CTC 2026 Fall — DeFi Track**
 > Salary-stream-backed on-chain credit, verified cross-chain via the Attestcoin Protocol.

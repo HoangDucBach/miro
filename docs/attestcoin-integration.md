@@ -1,13 +1,13 @@
 # Attestcoin Integration Summary
 
 > **Required by the hackathon submission** (§1.8). This is the deep-dive on *how* and *why*
-> StreamCredit uses the Attestcoin Protocol, and an honest accounting of what it does and
+> Miro uses the Attestcoin Protocol, and an honest accounting of what it does and
 > does not guarantee. Status: scaffold — fill in the TODO sections once the contracts are
 > deployed to testnet and the worker has processed real events.
 
 ## What we prove, and why
 
-StreamCredit needs to answer one question trustlessly: *is this borrower's salary stream
+Miro needs to answer one question trustlessly: *is this borrower's salary stream
 real, and how much of it remains locked?* That requires proving three lifecycle events
 emitted by [`SalaryStream.sol`](../contracts/source/src/SalaryStream.sol) on Ethereum
 Sepolia, on Creditcoin, without a trusted oracle operator:
@@ -57,7 +57,7 @@ See [product-spec.md §1.6](./product-spec.md#16-trust--risk-model-state-honestl
 for the full table. The two gaps worth being explicit about in a demo/judging context:
 
 1. **Cross-chain enforcement gap**: a loan lives on Creditcoin, salary lives on Ethereum.
-   StreamCredit cannot seize Ethereum funds to enforce garnishment — `pendingGarnish` is an
+   Miro cannot seize Ethereum funds to enforce garnishment — `pendingGarnish` is an
    obligation ledger, and funds only move when the borrower calls `settleGarnish` on
    Creditcoin. The 50–70% LTV cap against *unvested* value is the actual lender protection,
    not the garnishment mechanism itself.

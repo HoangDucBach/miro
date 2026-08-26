@@ -1,5 +1,5 @@
 {
-  "name": "@streamcredit/worker",
+  "name": "@miro/worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@streamcredit/shared": "workspace:*",
+    "@miro/shared": "workspace:*",
     "@gluwa/usc-sdk": "0.18.0",
     "ethers": "^6.17.0",
     "bullmq": "^6.2.2",

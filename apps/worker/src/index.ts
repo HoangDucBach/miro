@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Contract } from "ethers";
-import { SALARY_STREAM_ABI } from "@streamcredit/shared";
+import { SALARY_STREAM_ABI } from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
   ATTESTATION_TIMEOUT_MS,

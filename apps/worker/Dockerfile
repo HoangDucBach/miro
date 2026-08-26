@@ -1,6 +1,6 @@
 # Built and run with Bun. Build context must be the repo root (needed to resolve the
-# @streamcredit/shared workspace package), e.g.:
-#   docker build -f apps/worker/Dockerfile -t streamcredit-worker .
+# @miro/shared workspace package), e.g.:
+#   docker build -f apps/worker/Dockerfile -t miro-worker .
 FROM oven/bun:1 AS base
 WORKDIR /repo
 

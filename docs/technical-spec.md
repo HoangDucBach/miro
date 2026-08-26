@@ -1,4 +1,4 @@
-# StreamCredit — Technical Spec
+# Miro — Technical Spec
 
 > Spec verified against Creditcoin docs as of 2026-08-25 (post-USC→Attestcoin rename).
 > See [product-spec.md](./product-spec.md) for the product/trust-model half of this document.
@@ -124,7 +124,7 @@ See [.env.example](../.env.example) at repo root.
 See root [README.md](../README.md) for the up-to-date tree; original design target:
 
 ```
-streamcredit/
+miro/
 ├── package.json                 # pnpm workspaces + turborepo pipeline
 ├── pnpm-workspace.yaml          # packages: apps/*, packages/*, contracts/*
 ├── turbo.json                   # build/test/lint task graph
@@ -136,18 +136,18 @@ streamcredit/
 │   └── creditcoin/              # ── CC3 Testnet (Foundry project)
 │
 ├── packages/
-│   ├── shared/                  # @streamcredit/shared — ABIs, addresses.ts, event topics, types
+│   ├── shared/                  # @miro/shared — ABIs, addresses.ts, event topics, types
 │   └── config/                  # shared tsconfig / eslint presets
 │
 ├── apps/
-│   ├── worker/                  # @streamcredit/worker — the Attestcoin relay
-│   └── web/                     # @streamcredit/web — minimal Next.js/Vite dApp (deferred — infra first)
+│   ├── worker/                  # @miro/worker — the Attestcoin relay
+│   └── web/                     # @miro/web — minimal Next.js/Vite dApp (deferred — infra first)
 │
 ├── docs/
 └── .github/workflows/ci.yml
 ```
 
-**Tooling choices (latest-standard):** pnpm workspaces + Turborepo (fast, zero-config caching) · Foundry for both contract packages (fast tests; two isolated projects because the two chains share no code) · TypeScript strict everywhere · `@streamcredit/shared` is the single source of truth for ABIs/addresses so worker & web never drift · CI runs `forge test` + typecheck. Solidity `^0.8.23` to match the reference ASC examples.
+**Tooling choices (latest-standard):** pnpm workspaces + Turborepo (fast, zero-config caching) · Foundry for both contract packages (fast tests; two isolated projects because the two chains share no code) · TypeScript strict everywhere · `@miro/shared` is the single source of truth for ABIs/addresses so worker & web never drift · CI runs `forge test` + typecheck. Solidity `^0.8.23` to match the reference ASC examples.
 
 ## 2.8 19-day plan (2 devs)
 
