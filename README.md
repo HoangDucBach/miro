@@ -49,8 +49,9 @@ streamcredit/
 
 ## Setup
 
-Requires [Foundry](https://getfoundry.sh) (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
-and Node 20+ / pnpm 9+.
+Requires [Foundry](https://getfoundry.sh) (`curl -L https://foundry.paradigm.xyz | bash && foundryup`),
+Node 20+ / pnpm 9+, and [Bun](https://bun.com) (`curl -fsSL https://bun.com/install | bash`) — the
+worker runs on Bun, tests still run on vitest.
 
 ```bash
 # TS workspace

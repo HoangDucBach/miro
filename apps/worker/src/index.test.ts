@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ProofJob } from "@streamcredit/shared";
 import type { chainInfo, proofProvider } from "@gluwa/usc-sdk";
-import { ATTESTATION_POLL_MS, ATTESTATION_TIMEOUT_MS } from "./chain.js";
+import { ATTESTATION_POLL_MS, ATTESTATION_TIMEOUT_MS } from "./lib/chain.js";
 
 const pendingJobsMock = vi.fn();
 const updateStatusMock = vi.fn();
-vi.mock("./store.js", () => ({
+vi.mock("./lib/store.js", () => ({
   pendingJobs: pendingJobsMock,
   updateStatus: updateStatusMock,
   enqueue: vi.fn(),
 }));
 
 const submitProofMock = vi.fn();
-vi.mock("./submitter.js", () => ({
+vi.mock("./lib/submitter.js", () => ({
   ascContract: vi.fn(),
   submitProof: submitProofMock,
 }));

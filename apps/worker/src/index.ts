@@ -8,10 +8,10 @@ import {
   makeChainInfoProvider,
   resolveSourceChainKey,
   sourceProvider,
-} from "./chain.js";
-import { makeHostedProofBuilder } from "./proof.js";
-import { ascContract, submitProof } from "./submitter.js";
-import { enqueue, pendingJobs, updateStatus } from "./store.js";
+} from "./lib/chain.js";
+import { makeHostedProofBuilder } from "./lib/proof.js";
+import { ascContract, submitProof } from "./lib/submitter.js";
+import { enqueue, pendingJobs, updateStatus } from "./lib/store.js";
 import type { proofProvider, chainInfo } from "@gluwa/usc-sdk";
 
 /**
