@@ -1,0 +1,12 @@
+**/node_modules
+**/.turbo
+**/dist
+**/.data
+contracts/*/lib
+contracts/*/out
+contracts/*/cache
+contracts/*/broadcast
+.git
+.env
+.env.local
+*.log

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Contract, JsonRpcProvider, Wallet } from "ethers";
+import { Contract, JsonRpcProvider, NonceManager, Wallet } from "ethers";
 import { ascContract, submitProof } from "./submitter.js";
 import type { ProofData } from "./proof.js";
 
@@ -20,14 +20,17 @@ function fakeProof(): ProofData {
 }
 
 describe("ascContract", () => {
-  it("wires up a Contract at the given address, signed by the worker key", () => {
+  it("wires up a Contract at the given address, signed by the worker key", async () => {
     const cc = new JsonRpcProvider("https://example-cc3-rpc.test");
     const asc = ascContract(cc, "0x1111111111111111111111111111111111111111", TEST_PRIVATE_KEY);
 
     expect(asc).toBeInstanceOf(Contract);
     expect(asc.target).toBe("0x1111111111111111111111111111111111111111");
-    const wallet = asc.runner as Wallet;
-    expect(wallet.address).toBe(new Wallet(TEST_PRIVATE_KEY).address);
+    // Wrapped in NonceManager (not the bare Wallet) so concurrent submitProof calls can't
+    // race on the same nonce once jobs run in parallel.
+    const runner = asc.runner as NonceManager;
+    expect(runner).toBeInstanceOf(NonceManager);
+    await expect(runner.getAddress()).resolves.toBe(new Wallet(TEST_PRIVATE_KEY).address);
   });
 });
 

@@ -15,7 +15,8 @@
     "@streamcredit/shared": "workspace:*",
     "@gluwa/usc-sdk": "0.18.0",
     "ethers": "^6.17.0",
-    "lowdb": "^7.0.1",
+    "bullmq": "^6.2.2",
+    "ioredis": "^6.0.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

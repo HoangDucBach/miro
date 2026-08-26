@@ -1,13 +1,19 @@
-import { Contract, Wallet, type JsonRpcProvider } from "ethers";
+import { Contract, NonceManager, Wallet, type JsonRpcProvider } from "ethers";
 import { STREAM_VERIFIER_ASC_ABI } from "@streamcredit/shared";
 import type { ProofData } from "./proof.js";
 
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MS = 5000;
 
+/**
+ * NonceManager matters once the queue runs jobs concurrently: two submitProof calls
+ * racing on the same Wallet would both read the same "next nonce" and one tx would fail
+ * or replace the other. NonceManager serializes nonce assignment while still letting the
+ * RPC calls for everything else (attest-wait, proof fetch) run in parallel.
+ */
 export function ascContract(cc: JsonRpcProvider, ascAddress: string, workerKey: string): Contract {
   const wallet = new Wallet(workerKey, cc);
-  return new Contract(ascAddress, STREAM_VERIFIER_ASC_ABI, wallet);
+  return new Contract(ascAddress, STREAM_VERIFIER_ASC_ABI, new NonceManager(wallet));
 }
 
 /** Submits a proof to StreamVerifierASC.processStreamEvent, with retry on transient failures. */

@@ -25,19 +25,6 @@ export type StreamEvent =
   | { kind: "withdrawn"; data: SalaryStreamWithdrawnEvent }
   | { kind: "cancelled"; data: SalaryStreamCancelledEvent };
 
-/** Mirrors the worker's persistent job queue states (apps/worker/src/store.ts, §2.4). */
-export type ProofJobStatus = "pending" | "attested" | "proven" | "submitted" | "failed";
-
-export interface ProofJob {
-  txHash: string;
-  eventKind: StreamEvent["kind"];
-  blockNumber: number;
-  status: ProofJobStatus;
-  attempts: number;
-  lastError?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
 // NOTE: chain info comes directly from @gluwa/usc-sdk's chainInfo.ChainInfo type
-// (apps/worker/src/chain.ts) — not duplicated here, to avoid drifting from the real SDK shape.
+// (apps/worker/src/lib/chain.ts) — not duplicated here, to avoid drifting from the real SDK shape.
+// NOTE: job/queue state lives in BullMQ (apps/worker/src/lib/queue.ts) now, not a custom type here.
