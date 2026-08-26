@@ -80,11 +80,17 @@ for the full table. The two gaps worth being explicit about in a demo/judging co
 | EmployerRegistry | `0x7767A97fC07906EB87CA3cA158DC6D2FdC47e511` |
 | TestUSDC | `0xc2706681eC25d9823882A7f80040579501d9bc16` |
 | EvmV1Decoder (library) | `0x821EA1E92283fDDAde6E4F192370Dc2F9f5a83e2` |
-| StreamVerifierASC | `0x5214F820D7971267d89E2119a1D6c2a90fe7C441` |
-| CreditPool | `0x5620f9286d1F8D29ce99cFA8eDE4Eaab20B204E1` |
+| FixedPriceOracle | `0x78c46a57fc1c8d60570d48BFc1BBC8f490669c50` |
+| StreamVerifierASC | `0x4D937Ed2A70FDCB97602B41F11081dE5f178ebD1` |
+| CreditPool | `0xf3919e85B308a3FD9a32F771AfB55EbB904964A5` |
 
 No CC3 Testnet explorer link included here, none confirmed yet. `asc.pool()` was checked
 on-chain and matches the CreditPool address above, so the wiring is confirmed correct.
+
+ASC and CreditPool were redeployed twice after the first pass above: once to wire in
+`FixedPriceOracle` (fixes `creditLimit()`/`onSalaryWithdrawn` treating raw wei as if it were
+already tUSDC-denominated) and once more for a garnish-settlement underflow fix. The
+addresses in this table and in the root `.env` are the current, live ones.
 
 **Deployment note**: `forge script Deploy.s.sol` panics against CC3 Testnet
 (`prevrandao not set`) — Foundry's local simulation step expects a post-merge Ethereum
@@ -99,8 +105,10 @@ forge create src/TestUSDC.sol:TestUSDC --legacy --broadcast ...
 forge create src/StreamVerifierASC.sol:StreamVerifierASC --legacy --broadcast \
   --libraries src/libs/EvmV1Decoder.sol:EvmV1Decoder:<decoder address> \
   --constructor-args <registry> <sourceChainKey> <streamContract> ...
+forge create src/FixedPriceOracle.sol:FixedPriceOracle --legacy --broadcast \
+  --constructor-args <initial price, 8 decimals> ...
 forge create src/CreditPool.sol:CreditPool --legacy --broadcast \
-  --constructor-args <usdc address> <asc address> ...
+  --constructor-args <usdc address> <asc address> <price oracle address> ...
 cast send <asc address> "setPool(address)" <pool address> --legacy ...
 ```
 
