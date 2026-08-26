@@ -2,11 +2,13 @@
 pragma solidity ^0.8.23;
 
 import {IStreamVerifier} from "./interfaces/IStreamVerifier.sol";
+import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+    function decimals() external view returns (uint8);
 }
 
 /// @notice Holds LP liquidity, issues salary-stream-backed credit lines, and tracks
@@ -22,6 +24,9 @@ contract CreditPool {
 
     IERC20 public immutable usdc;
     IStreamVerifier public immutable verifier;
+    IPriceOracle public immutable priceOracle;
+    uint8 public immutable debtDecimals;
+    uint8 public constant COLLATERAL_DECIMALS = 18; // SalaryStream collateral is native ETH (wei)
 
     mapping(address => uint256) public debt; // principal + flat interest
     mapping(address => uint256) public pendingGarnish; // owed from salary withdrawals
@@ -45,18 +50,49 @@ contract CreditPool {
         _;
     }
 
-    constructor(address usdc_, address verifier_) {
+    constructor(address usdc_, address verifier_, address priceOracle_) {
         usdc = IERC20(usdc_);
         verifier = IStreamVerifier(verifier_);
+        priceOracle = IPriceOracle(priceOracle_);
+        debtDecimals = usdc.decimals();
     }
 
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? a : b;
     }
 
+    /// @notice USD value of a wei (18-decimal ETH) amount, in the debt token's own
+    ///         decimals. Used for both collateral valuation and salary-withdrawal
+    ///         valuation, so the two can never drift onto different conversion logic.
+    function _weiToDebtValue(uint256 weiAmount) internal view returns (uint256) {
+        if (weiAmount == 0) return 0;
+
+        uint256 oraclePrice = priceOracle.price();
+        uint8 oracleDecimals = priceOracle.decimals();
+
+        // weiAmount (18 decimals) * price (oracleDecimals) / 1e18 -> USD value, still
+        // scaled by oracleDecimals. Multiply before dividing to keep full precision.
+        uint256 usdValue = weiAmount * oraclePrice / (10 ** COLLATERAL_DECIMALS);
+        return _rescale(usdValue, oracleDecimals, debtDecimals);
+    }
+
+    /// @notice USD value of the borrower's remaining locked collateral, in the debt
+    ///         token's own decimals. remainingLocked() is wei (18-decimal ETH); without
+    ///         this conversion a raw wei number would be spent directly as if it were
+    ///         already a tUSDC amount, which is off by many orders of magnitude.
+    function collateralValue(address user) public view returns (uint256) {
+        return _weiToDebtValue(verifier.remainingLocked(user));
+    }
+
     function creditLimit(address user) public view returns (uint256) {
         uint256 ltv = min(BASE_LTV_BPS + repaidLoans[user] * LTV_STEP_BPS, MAX_LTV_BPS);
-        return verifier.remainingLocked(user) * ltv / BPS_DENOM;
+        return collateralValue(user) * ltv / BPS_DENOM;
+    }
+
+    function _rescale(uint256 amount, uint8 fromDecimals, uint8 toDecimals) internal pure returns (uint256) {
+        if (fromDecimals == toDecimals) return amount;
+        if (fromDecimals > toDecimals) return amount / (10 ** (fromDecimals - toDecimals));
+        return amount * (10 ** (toDecimals - fromDecimals));
     }
 
     function borrow(uint256 amount) external {
@@ -75,9 +111,12 @@ contract CreditPool {
     /// @notice Called by StreamVerifierASC when a proven SalaryStreamWithdrawn event is
     ///         processed. Only records the obligation, the tUSDC moves later when the
     ///         borrower calls settleGarnish. Can't seize funds on Ethereum directly.
-    function onSalaryWithdrawn(address b, uint256 salary) external onlyVerifier {
+    /// @param salaryWei the withdrawn amount, in wei (ETH) - same units as remainingLocked,
+    ///        so it needs the same wei->debt-token conversion before GARNISH_BPS is applied.
+    function onSalaryWithdrawn(address b, uint256 salaryWei) external onlyVerifier {
         if (debt[b] == 0) return;
-        uint256 owed = min(salary * GARNISH_BPS / BPS_DENOM, debt[b]);
+        uint256 salaryValue = _weiToDebtValue(salaryWei);
+        uint256 owed = min(salaryValue * GARNISH_BPS / BPS_DENOM, debt[b]);
         pendingGarnish[b] += owed;
         emit GarnishRecorded(b, owed, pendingGarnish[b]);
     }
