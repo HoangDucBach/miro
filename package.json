@@ -1,0 +1,24 @@
+{
+  "name": "streamcredit",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Salary-stream-backed on-chain credit, verified cross-chain via the Attestcoin Protocol.",
+  "packageManager": "pnpm@9.10.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "worker": "pnpm --filter @streamcredit/worker dev",
+    "worker:e2e": "pnpm --filter @streamcredit/worker e2e",
+    "web": "pnpm --filter @streamcredit/web dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.6.0"
+  }
+}

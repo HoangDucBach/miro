@@ -1,0 +1,25 @@
+# deps / build
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# foundry
+contracts/*/out/
+contracts/*/cache/
+contracts/*/broadcast/
+contracts/*/lib/
+!contracts/*/broadcast/**/dry-run
+
+# worker persistent job queue
+apps/worker/.data/
+*.sqlite
+*.sqlite-journal
+
+# misc
+.DS_Store
+*.log
