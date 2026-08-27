@@ -18,11 +18,14 @@ Second pivot: from collateral-based designs (salary streams, then token vesting)
 cross-chain credit passport — the one idea that genuinely can't be reproduced without
 Creditcoin (see
 [technical-spec.md §2.10](docs/technical-spec.md#210-migration-to-the-cross-chain-credit-passport-current-design)).
-Contracts and worker are rewritten and fully tested locally (126 tests total: 86
-`contracts/creditcoin`, 12 `contracts/source`, 28 `apps/worker`); **not yet redeployed** —
-the addresses in
-[docs/attestcoin-integration.md](docs/attestcoin-integration.md#deployed-addresses) are
-from a prior design and need refreshing. `apps/web` is still deferred.
+Contracts and worker are fully tested locally (126 tests total: 86 `contracts/creditcoin`,
+12 `contracts/source`, 28 `apps/worker`), deployed live to Sepolia + CC3 Testnet, and
+verified end to end with a real run of `apps/worker/src/e2e.ts`: a real Aave V3 repay and
+a real Morpho Blue repay were each attested and verified on-chain, taking the passport
+score from 0 → 10 → 40 → 70 across two cross-chain sources plus the local PassportPool
+feedback loop — see
+[docs/attestcoin-integration.md](docs/attestcoin-integration.md#live-e2e-run--2026-08-27)
+for the full run log and the addresses it ran against. `apps/web` is still deferred.
 
 - [`contracts/creditcoin/src/libs/`](contracts/creditcoin/src/libs/) — `EvmV1Decoder.sol` and
   `NativeQueryVerifier.sol` are vendored verbatim from the real reference implementation

@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Contract, Wallet, formatUnits } from "ethers";
+import { AbiCoder, Contract, Wallet, formatUnits, keccak256 } from "ethers";
 import type { chainInfo, proofProvider } from "@gluwa/usc-sdk";
 import {
   CREDIT_PASSPORT_ABI,
@@ -55,7 +55,7 @@ async function main() {
   const usdcAddress = requireEnv("TEST_USDC_CONTRACT");
   const aavePoolAddress = requireEnv("AAVE_POOL_CONTRACT");
   const aaveFaucetAddress = requireEnv("AAVE_FAUCET_CONTRACT");
-  const aaveDaiAddress = requireEnv("AAVE_DAI_CONTRACT");
+  const aaveReserveAssetAddress = requireEnv("AAVE_RESERVE_ASSET_CONTRACT");
   const morphoAddress = requireEnv("MORPHO_CONTRACT");
   const demoLoanTokenAddress = requireEnv("DEMO_LOAN_TOKEN_CONTRACT");
   const demoCollateralTokenAddress = requireEnv("DEMO_COLLATERAL_TOKEN_CONTRACT");
@@ -79,7 +79,7 @@ async function main() {
   const usdc = new Contract(usdcAddress, TEST_USDC_ABI, borrowerCC);
   const aavePool = new Contract(aavePoolAddress, AAVE_POOL_ABI, borrowerSepolia);
   const aaveFaucet = new Contract(aaveFaucetAddress, ["function mint(address token, address to, uint256 amount) external returns (uint256)"], deployerSepolia);
-  const aaveDai = new Contract(aaveDaiAddress, DEMO_TOKEN_ABI, borrowerSepolia);
+  const aaveReserveAsset = new Contract(aaveReserveAssetAddress, DEMO_TOKEN_ABI, borrowerSepolia);
   const morpho = new Contract(morphoAddress, MORPHO_ABI, deployerSepolia);
   const relayer = passportContract(cc, passportAddress, workerKey);
 
@@ -91,9 +91,9 @@ async function main() {
 
   console.log("[e2e] 0/9 funding the fresh borrower wallet for gas...");
   const fundSepoliaTx = await deployerSepolia.sendTransaction({ to: borrower.address, value: 50_000_000_000_000_000n });
-  await fundSepoliaTx.wait();
-  const fundCCTx = await new Wallet(deployerKey, cc).sendTransaction({ to: borrower.address, value: 20_000_000_000_000_000_000n });
-  await fundCCTx.wait();
+  await fundSepoliaTx.wait(2);
+  const fundCCTx = await new Wallet(deployerKey, cc).sendTransaction({ to: borrower.address, value: 60_000_000_000_000_000_000n });
+  await fundCCTx.wait(2);
 
   // 1. Register both Sepolia sources + the local PassportPool reporter, if this is the
   //    first run. Registration is config, not a redeploy -- see CreditPassport.setSource.
@@ -102,22 +102,24 @@ async function main() {
   await ensureMorphoSourceRegistered(passport, sepolia.chainKey, morphoAddress);
   await ensureLocalReporterRegistered(passport, poolAddress);
 
-  // 2. Aave leg: faucet DAI, supply as collateral, borrow a small amount, repay in full.
+  // 2. Aave leg: faucet a real, uncapped reserve asset (LINK -- DAI/USDC/USDT are all
+  //    already above their 2B supply cap from public testnet usage, verified live before
+  //    picking this asset), supply as collateral, borrow a small amount, repay in full.
   console.log("[e2e] 2/9 Aave: faucet + supply + borrow...");
-  const daiAmount = 1000n * 10n ** 18n;
-  const faucetTx = await aaveFaucet.mint(aaveDaiAddress, borrower.address, daiAmount);
-  await faucetTx.wait();
-  await (await aaveDai.approve(aavePoolAddress, daiAmount)).wait();
-  await (await aavePool.supply(aaveDaiAddress, daiAmount, borrower.address, 0)).wait();
+  const reserveAssetAmount = 1000n * 10n ** 18n;
+  const faucetTx = await aaveFaucet.mint(aaveReserveAssetAddress, borrower.address, reserveAssetAmount);
+  await faucetTx.wait(2);
+  await (await aaveReserveAsset.approve(aavePoolAddress, reserveAssetAmount)).wait(2);
+  await (await aavePool.supply(aaveReserveAssetAddress, reserveAssetAmount, borrower.address, 0)).wait(2);
   const aaveBorrowAmount = 100n * 10n ** 18n;
-  await (await aavePool.borrow(aaveDaiAddress, aaveBorrowAmount, AAVE_BORROW_INTEREST_RATE_MODE, 0, borrower.address)).wait();
+  await (await aavePool.borrow(aaveReserveAssetAddress, aaveBorrowAmount, AAVE_BORROW_INTEREST_RATE_MODE, 0, borrower.address)).wait(2);
 
   console.log("[e2e] 3/9 Aave: repaying in full...");
-  // Extra DAI to cover any interest accrued between borrow and repay.
-  await (await aaveFaucet.mint(aaveDaiAddress, borrower.address, daiAmount)).wait();
-  await (await aaveDai.approve(aavePoolAddress, aaveBorrowAmount * 2n)).wait();
-  const aaveRepayTx = await aavePool.repay(aaveDaiAddress, aaveBorrowAmount * 2n, AAVE_BORROW_INTEREST_RATE_MODE, borrower.address);
-  const aaveRepayReceipt = await aaveRepayTx.wait();
+  // Extra reserve asset to cover any interest accrued between borrow and repay.
+  await (await aaveFaucet.mint(aaveReserveAssetAddress, borrower.address, reserveAssetAmount)).wait(2);
+  await (await aaveReserveAsset.approve(aavePoolAddress, aaveBorrowAmount * 2n)).wait(2);
+  const aaveRepayTx = await aavePool.repay(aaveReserveAssetAddress, aaveBorrowAmount * 2n, AAVE_BORROW_INTEREST_RATE_MODE, borrower.address);
+  const aaveRepayReceipt = await aaveRepayTx.wait(2);
 
   console.log("[e2e] 4/9 relaying Aave Repay...");
   await relayEvent(chainInfoProvider, builder, sepolia.chainKey, relayer, aaveRepayTx.hash, aaveRepayReceipt.blockNumber, "Aave Repay");
@@ -135,20 +137,26 @@ async function main() {
 
   console.log("[e2e] 6/9 Morpho: supply collateral + borrow...");
   const demoCollateralToken = new Contract(demoCollateralTokenAddress, DEMO_TOKEN_ABI, deployerSepolia);
-  await (await demoCollateralToken.mint(borrower.address, DEMO_COLLATERAL_DEPOSIT)).wait();
+  await (await demoCollateralToken.mint(borrower.address, DEMO_COLLATERAL_DEPOSIT)).wait(2);
   const demoCollateralAsBorrower = demoCollateralToken.connect(borrowerSepolia) as Contract;
-  await (await demoCollateralAsBorrower.approve(morphoAddress, DEMO_COLLATERAL_DEPOSIT)).wait();
+  await (await demoCollateralAsBorrower.approve(morphoAddress, DEMO_COLLATERAL_DEPOSIT)).wait(2);
   const morphoAsBorrower = morpho.connect(borrowerSepolia) as Contract;
-  await (await morphoAsBorrower.supplyCollateral(marketParams, DEMO_COLLATERAL_DEPOSIT, borrower.address, "0x")).wait();
-  await (await morphoAsBorrower.borrow(marketParams, DEMO_BORROW_AMOUNT, 0n, borrower.address, borrower.address)).wait();
+  await (await morphoAsBorrower.supplyCollateral(marketParams, DEMO_COLLATERAL_DEPOSIT, borrower.address, "0x")).wait(2);
+  await (await morphoAsBorrower.borrow(marketParams, DEMO_BORROW_AMOUNT, 0n, borrower.address, borrower.address)).wait(2);
 
   console.log("[e2e] 7/9 Morpho: repaying in full...");
   const demoLoanToken = new Contract(demoLoanTokenAddress, DEMO_TOKEN_ABI, deployerSepolia);
-  await (await demoLoanToken.mint(borrower.address, DEMO_BORROW_AMOUNT)).wait(); // cover accrued interest
+  await (await demoLoanToken.mint(borrower.address, DEMO_BORROW_AMOUNT)).wait(2); // cover accrued interest
   const demoLoanAsBorrower = demoLoanToken.connect(borrowerSepolia) as Contract;
-  await (await demoLoanAsBorrower.approve(morphoAddress, DEMO_BORROW_AMOUNT * 2n)).wait();
-  const morphoRepayTx = await morphoAsBorrower.repay(marketParams, DEMO_BORROW_AMOUNT * 2n, 0n, borrower.address, "0x");
-  const morphoRepayReceipt = await morphoRepayTx.wait();
+  await (await demoLoanAsBorrower.approve(morphoAddress, DEMO_BORROW_AMOUNT * 2n)).wait(2);
+  // Repay by shares, not assets: overpaying assets (e.g. 2x principal to cover interest)
+  // makes Morpho try to convert more assets into shares than the position actually
+  // borrowed, underflowing borrowShares -= sharesRepaid and panicking. Morpho's own docs
+  // recommend shares-based repayment to close a position in full for exactly this reason.
+  const marketId = morphoMarketId(marketParams);
+  const [, borrowShares] = await morphoAsBorrower.position(marketId, borrower.address);
+  const morphoRepayTx = await morphoAsBorrower.repay(marketParams, 0n, borrowShares, borrower.address, "0x");
+  const morphoRepayReceipt = await morphoRepayTx.wait(2);
 
   console.log("[e2e] 8/9 relaying Morpho Repay...");
   await relayEvent(chainInfoProvider, builder, sepolia.chainKey, relayer, morphoRepayTx.hash, morphoRepayReceipt.blockNumber, "Morpho Repay");
@@ -162,16 +170,21 @@ async function main() {
   const ltvBefore: bigint = await pool.maxLtvBps(borrower.address);
   console.log(`[e2e]     maxLtvBps(borrower) before local history = ${ltvBefore}`);
 
-  await (await pool.depositCollateral({ value: 2_500_000_000_000_000_000n })).wait(); // 2.5 tCTC
+  // 50 tCTC, well above the amount needed for the resulting loan to cross
+  // MIN_CREDIT_LOAN (10 tUSDC) -- a smaller deposit borrows too little to ever be
+  // reported back to the passport, which is correct anti-dust behavior, not a bug, but
+  // defeats the point of this demo step.
+  await (await pool.depositCollateral({ value: 50_000_000_000_000_000_000n })).wait(2); // 50 tCTC
+
   const limit: bigint = await pool.creditLimit(borrower.address);
   console.log(`[e2e]     credit limit: ${formatUnits(limit, 6)} tUSDC`);
   if (limit > 0n) {
     const borrowAmount = limit / 2n;
-    await (await pool.borrow(borrowAmount)).wait();
+    await (await pool.borrow(borrowAmount)).wait(2);
     const owed: bigint = await pool.debt(borrower.address);
     await ensureUsdcBalance(usdc, borrower.address, owed);
-    await (await usdc.approve(poolAddress, owed)).wait();
-    await (await pool.repay(owed)).wait();
+    await (await usdc.approve(poolAddress, owed)).wait(2);
+    await (await pool.repay(owed)).wait(2);
     console.log("[e2e]     repaid in full -- PassportPool should have reported this to the passport");
   }
 
@@ -190,11 +203,11 @@ async function ensureAaveSourceRegistered(passport: Contract, chainKey: number, 
     borrowerLoc: 1, // Topic2 -- Aave's Repay indexes reserve, user, repayer; user is topic 2
     borrowerDataWord: 0,
     amountDataWord: 0, // amount is the only non-indexed field before useATokens
-    minAmount: 10n * 10n ** 18n, // 10 DAI floor, anti-dust
+    minAmount: 10n * 10n ** 18n, // 10-unit floor, anti-dust
     negative: false,
     enabled: true,
   });
-  await tx.wait();
+  await tx.wait(2);
 }
 
 async function ensureMorphoSourceRegistered(passport: Contract, chainKey: number, morphoAddress: string): Promise<void> {
@@ -212,14 +225,14 @@ async function ensureMorphoSourceRegistered(passport: Contract, chainKey: number
     negative: false,
     enabled: true,
   });
-  await tx.wait();
+  await tx.wait(2);
 }
 
 async function ensureLocalReporterRegistered(passport: Contract, poolAddress: string): Promise<void> {
   const already: boolean = await passport.localReporters(poolAddress);
   if (already) return;
   const tx = await passport.setLocalReporter(poolAddress, true);
-  await tx.wait();
+  await tx.wait(2);
 }
 
 interface MarketParams {
@@ -228,6 +241,18 @@ interface MarketParams {
   oracle: string;
   irm: string;
   lltv: bigint;
+}
+
+/** Mirrors Morpho's own MarketParamsLib.id(): keccak256 of the five market params,
+ *  tightly packed as 32-byte words (verified against morpho-org/morpho-blue's
+ *  MarketParamsLib.sol -- an assembly keccak256 over the struct's raw memory layout,
+ *  which for five 32-byte-representable fields is equivalent to abi.encode of the tuple). */
+function morphoMarketId(marketParams: MarketParams): string {
+  const encoded = AbiCoder.defaultAbiCoder().encode(
+    ["address", "address", "address", "address", "uint256"],
+    [marketParams.loanToken, marketParams.collateralToken, marketParams.oracle, marketParams.irm, marketParams.lltv],
+  );
+  return keccak256(encoded);
 }
 
 /** Creates the demo market once; safe to call repeatedly since Morpho's own createMarket
@@ -252,7 +277,7 @@ async function ensureMorphoMarketExists(
 
   const marketParams: MarketParams = { loanToken, collateralToken, oracle, irm, lltv: MORPHO_LLTV };
   try {
-    await (await morpho.createMarket(marketParams)).wait();
+    await (await morpho.createMarket(marketParams)).wait(2);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`[e2e]     createMarket skipped (${msg}) -- likely already exists`);
@@ -267,10 +292,10 @@ async function seedMorphoLiquidity(
   marketParams: MarketParams,
 ): Promise<void> {
   const loanToken = new Contract(loanTokenAddress, DEMO_TOKEN_ABI, lender);
-  await (await loanToken.mint(lender.address, DEMO_LOAN_LIQUIDITY)).wait();
-  await (await loanToken.approve(await morpho.getAddress(), DEMO_LOAN_LIQUIDITY)).wait();
+  await (await loanToken.mint(lender.address, DEMO_LOAN_LIQUIDITY)).wait(2);
+  await (await loanToken.approve(await morpho.getAddress(), DEMO_LOAN_LIQUIDITY)).wait(2);
   const morphoAsLender = morpho.connect(lender) as Contract;
-  await (await morphoAsLender.supply(marketParams, DEMO_LOAN_LIQUIDITY, 0n, lender.address, "0x")).wait();
+  await (await morphoAsLender.supply(marketParams, DEMO_LOAN_LIQUIDITY, 0n, lender.address, "0x")).wait(2);
 }
 
 /** Waits for attestation, fetches the proof, and submits it — the same steps the
@@ -297,7 +322,7 @@ async function seedLP(usdcAsLP: Contract, poolAsLP: Contract, lpAddress: string)
   const seedAmount = 5000n * 10n ** 6n;
   try {
     const faucetTx = await usdcAsLP.faucet();
-    await faucetTx.wait();
+    await faucetTx.wait(2);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`[e2e]     LP faucet unavailable (${msg}), reusing existing balance`);
@@ -309,9 +334,9 @@ async function seedLP(usdcAsLP: Contract, poolAsLP: Contract, lpAddress: string)
     return;
   }
   const approveTx = await usdcAsLP.approve(await poolAsLP.getAddress(), amount);
-  await approveTx.wait();
+  await approveTx.wait(2);
   const depositTx = await poolAsLP.deposit(amount);
-  await depositTx.wait();
+  await depositTx.wait(2);
   console.log(`[e2e]     deposited ${formatUnits(amount, 6)} tUSDC as LP liquidity`);
 }
 
@@ -320,7 +345,7 @@ async function ensureUsdcBalance(usdc: Contract, holder: string, needed: bigint)
   if (balance >= needed) return;
   try {
     const tx = await usdc.faucet();
-    await tx.wait();
+    await tx.wait(2);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`insufficient tUSDC (${formatUnits(balance, 6)}) and faucet unavailable: ${msg}`);

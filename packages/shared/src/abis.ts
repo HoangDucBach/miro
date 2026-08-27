@@ -8,6 +8,7 @@ export const CREDIT_PASSPORT_ABI = [
   "function processAttestation(uint64 chainKey, uint64 blockHeight, bytes encodedTransaction, bytes32 merkleRoot, tuple(bytes32 hash, bool isLeft)[] siblings, bytes32 lowerEndpointDigest, bytes32[] continuityRoots) external returns (bool)",
   "function setSource(tuple(uint64 chainKey, address emitter, bytes32 topic0, uint8 borrowerLoc, uint8 borrowerDataWord, uint8 amountDataWord, uint256 minAmount, bool negative, bool enabled) cfg) external",
   "function setLocalReporter(address reporter, bool enabled) external",
+  "function localReporters(address) external view returns (bool)",
   "function sourceIdFor(uint64 chainKey, address emitter, bytes32 topic0) external pure returns (bytes32)",
   "function localSourceIdFor(address reporter) external pure returns (bytes32)",
   "function recordLocalRepay(address borrower, uint256 amount) external",
@@ -83,6 +84,7 @@ export const MORPHO_ABI = [
   "function repay(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external returns (uint256, uint256)",
   "function isLltvEnabled(uint256 lltv) external view returns (bool)",
   "function isIrmEnabled(address irm) external view returns (bool)",
+  "function position(bytes32 id, address user) external view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)",
   "event Repay(bytes32 indexed id, address indexed caller, address indexed onBehalf, uint256 assets, uint256 shares)",
 ] as const;
 

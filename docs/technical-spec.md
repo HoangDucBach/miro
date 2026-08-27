@@ -211,6 +211,6 @@ Completed:
 - [x] Two real lending protocols verified and wired: Aave V3 and Morpho Blue on Sepolia, both event shapes verified directly against upstream source (§2.3.2) rather than assumed.
 - [x] `packages/shared`, `apps/worker/src/index.ts` (multi-source watch list), `submitter.ts` (`passportContract`/`processAttestation`), and `e2e.ts` rewritten end to end.
 - [x] 126 tests passing: 86 `contracts/creditcoin`, 12 `contracts/source`, 28 `apps/worker` (vitest).
-- [ ] Redeploy to CC3 Testnet + Sepolia (demo assets), update `.env` and `docs/attestcoin-integration.md`.
-- [ ] Live `e2e.ts` run against real infra — Aave faucet behavior, Morpho market bootstrap (`isLltvEnabled`/`isIrmEnabled`), and the two attestation round-trips are unverified against live testnet until this runs.
+- [x] Deployed to CC3 Testnet + Sepolia (demo assets), `.env` and `docs/attestcoin-integration.md` updated with real addresses.
+- [x] Live `e2e.ts` run against real infra, twice, identical results both times: real Aave V3 repay (LINK, not DAI/USDC/USDT -- all three sit above their 2B supply cap from public testnet usage, a real live-verified finding) and real Morpho Blue repay each attested and verified on-chain, `scoreOf` progressing 0 → 10 → 40 → 70 exactly per the scoring formula. Two real bugs found only by running live (missing `localReporters` ABI getter, Morpho over-repayment causing a shares underflow) and one transient-RPC issue (mitigated with 2-confirmation waits) -- see attestcoin-integration.md's live-run section for details.
 - [ ] `apps/web` remains deferred, unaffected by this pivot.

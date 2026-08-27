@@ -90,61 +90,102 @@ for the full table. The gaps worth being explicit about in a demo/judging contex
 
 ## Deployed addresses
 
-> **Stale — from a prior design.** Kept here as a historical record; not valid for the
-> current credit-passport design. Pending a fresh deployment — see
-> [README.md §Deploying](../README.md#deploying).
+**Live, deployed 2026-08-27.** `EvmV1Decoder` and `TestUSDC`/`FixedPriceOracle` are reused
+from a prior deployment round (same bytecode, unaffected by any pivot); `CreditPassport`
+and `PassportPool` are fresh for the credit-passport design.
 
-**CC3 Testnet (prior salary-stream / token-vesting deployment):**
+**CC3 Testnet:**
 
 | Contract | Address |
 |---|---|
-| TestUSDC | `0xc2706681eC25d9823882A7f80040579501d9bc16` |
-| EvmV1Decoder (library) | `0x821EA1E92283fDDAde6E4F192370Dc2F9f5a83e2` |
-| FixedPriceOracle | `0x78c46a57fc1c8d60570d48BFc1BBC8f490669c50` |
+| EvmV1Decoder (library, reused) | `0x821EA1E92283fDDAde6E4F192370Dc2F9f5a83e2` |
+| TestUSDC (reused) | `0xc2706681eC25d9823882A7f80040579501d9bc16` |
+| FixedPriceOracle (reused, price reset to `1e8` = $1/tCTC) | `0x78c46a57fc1c8d60570d48BFc1BBC8f490669c50` |
+| CreditPassport | `0xF7F1E82CFA97d07812D8a61DD4c05B1C228f5851` |
+| PassportPool | `0x027a17E704B5641e6b2525415265133190b47FdB` |
 
-**Deployment note**: `forge script Deploy.s.sol` panics against CC3 Testnet
-(`prevrandao not set`) — Foundry's local simulation step expects a post-merge Ethereum
-block header field that CC3's blocks don't carry. Worked around by deploying each
-contract individually with `forge create` (which skips that simulation step) and wiring
-them together afterward with `cast send`. For the current design:
+Wiring confirmed on-chain: `passport.localReporters(pool) == true`; both sources
+registered and `enabled == true` (`sources(sourceIdFor(1, aavePool, AaveRepayTopic))` and
+the Morpho equivalent); `oracle.price() == 1e8`.
 
-```bash
-forge create src/libs/EvmV1Decoder.sol:EvmV1Decoder --legacy --broadcast ...
-forge create src/TestUSDC.sol:TestUSDC --legacy --broadcast ...
-forge create src/FixedPriceOracle.sol:FixedPriceOracle --legacy --broadcast \
-  --constructor-args <initial price, 8 decimals> ...
-forge create src/CreditPassport.sol:CreditPassport --legacy --broadcast \
-  --libraries src/libs/EvmV1Decoder.sol:EvmV1Decoder:<decoder address> ...
-forge create src/PassportPool.sol:PassportPool --legacy --broadcast \
-  --constructor-args <usdc address> <passport address> <oracle address> ...
-cast send <passport address> "setLocalReporter(address,bool)" <pool address> true --legacy ...
-cast send <passport address> "setSource((uint64,address,bytes32,uint8,uint8,uint8,uint256,bool,bool))" \
-  "(1,<aave pool>,<AaveRepay topic0>,1,0,0,<minAmount>,false,true)" --legacy ...
-cast send <passport address> "setSource((uint64,address,bytes32,uint8,uint8,uint8,uint256,bool,bool))" \
-  "(1,<morpho>,<MorphoRepay topic0>,2,0,0,<minAmount>,false,true)" --legacy ...
-```
+**Sepolia (demo Morpho market assets, `contracts/source`):**
 
-**Real Sepolia protocol addresses** (verified 2026-08-27 against each project's own
+| Contract | Address |
+|---|---|
+| DemoToken (loan) | `0x487e4801EDD42bfd5B39857053dc9C0F8f2AC652` |
+| DemoToken (collateral) | `0x1FC6A05B43F208beD57Fa09350322A375DA86714` |
+| FixedMorphoOracle | `0x7A1e6BDdbA6D5c05536a0fc823F92e2dA9E3B294` |
+
+**Real, unmodified Sepolia protocols** (verified 2026-08-27 against each project's own
 address book / deployment repo, not docs prose):
 
 | Contract | Address | Source |
 |---|---|---|
 | Aave V3 Pool | `0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951` | `bgd-labs/aave-address-book` |
-| Aave V3 Faucet | `0xC959483DBa39aa9E78757139af0e9a2EDEb3f42D` | same |
-| Aave V3 DAI | `0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357` | same |
+| Aave V3 Faucet | `0xC959483DBa39aa9E78757139af0e9a2EDEb3f42D` | same — confirmed **not permissioned** (anyone can mint) |
+| Aave V3 LINK (reserve asset used) | `0xf8Fb3713D459D7C1018BD0A49D19b4C44290EBE5` | same — confirmed `supplyCap = 0` (uncapped). DAI/USDC/USDT all sit above their 2B supply cap already, from public testnet usage over time — real, live-verified finding, not a code issue |
 | Morpho Blue | `0xd011ee229e7459ba1ddd22631ef7bf528d424a14` | `morpho-org/morpho-blue-deployment` broadcast, chain `11155111` |
-| Morpho AdaptiveCurveIRM | `0x8c5ddcd3f601c91d1bf51c8ec26066010acaba7c` | same broadcast — re-verify at deploy time |
+| Morpho AdaptiveCurveIRM | `0x8c5ddcd3f601c91d1bf51c8ec26066010acaba7c` | same broadcast — confirmed `isIrmEnabled == true` |
+| Morpho LLTV tier used | `860000000000000000` (86%) | confirmed `isLltvEnabled == true` |
+
+**Deployment note**: `forge script Deploy.s.sol` panics against CC3 Testnet
+(`prevrandao not set`) — Foundry's local simulation step expects a post-merge Ethereum
+block header field that CC3's blocks don't carry. Worked around by deploying each
+contract individually with `forge create` and wiring afterward with `cast send`:
+
+```bash
+forge create src/CreditPassport.sol:CreditPassport --legacy --broadcast \
+  --libraries src/libs/EvmV1Decoder.sol:EvmV1Decoder:0x821EA1E92283fDDAde6E4F192370Dc2F9f5a83e2 ...
+forge create src/PassportPool.sol:PassportPool --legacy --broadcast \
+  --constructor-args <usdc address> <passport address> <oracle address> ...
+cast send <passport address> "setLocalReporter(address,bool)" <pool address> true --legacy ...
+cast send <passport address> "setSource((uint64,address,bytes32,uint8,uint8,uint8,uint256,bool,bool))" \
+  "(1,<aave pool>,<AaveRepay topic0>,1,0,0,10000000000000000000,false,true)" --legacy ...
+cast send <passport address> "setSource((uint64,address,bytes32,uint8,uint8,uint8,uint256,bool,bool))" \
+  "(1,<morpho>,<MorphoRepay topic0>,2,0,0,10000000000000000000,false,true)" --legacy ...
+```
+
+## Live E2E run — 2026-08-27
+
+`apps/worker/src/e2e.ts` ran end to end against the deployment above, twice in a row, with
+identical results each time. Score progressed exactly per the formula in §2.3.1:
+
+| Step | Action | `scoreOf(borrower)` |
+|---|---|---|
+| Start | — | 0 |
+| Aave V3 repay (real, LINK) → relayed | +1 source, 1 repay | 10 |
+| Morpho Blue repay (real, demo market) → relayed | +1 source (diversity bonus) | 40 |
+| PassportPool local borrow/repay loop → self-reported | +1 source (diversity bonus) | 70 |
+
+`PassportPool.maxLtvBps(borrower)` moved from the 50% base to 54% (score 40) to 57% (score
+70) across the run — the passport score visibly changing real loan terms, not just a
+display number.
+
+Two real bugs were found and fixed only by running against live infrastructure, not
+caught by any unit test:
+
+1. **Missing ABI getter**: `CREDIT_PASSPORT_ABI` never declared `localReporters(address)`
+   (the contract's own public mapping getter), so the worker script crashed calling it.
+2. **Morpho over-repayment**: repaying via `assets` set to 2x the borrowed principal (to
+   cover accrued interest) makes Morpho convert more assets into shares than the position
+   actually borrowed, underflowing `borrowShares -= sharesRepaid` and panicking. Fixed by
+   repaying via `shares` (querying `position(id, borrower).borrowShares` first) instead —
+   exactly what Morpho's own docs recommend for closing a position in full.
+
+One transient issue was also found and mitigated: a public Sepolia RPC's likely multi-node
+replication lag caused a `borrow()` call to occasionally revert right after the `supply()`
+it depended on, even though a static replay of the identical call succeeded moments later
+and on-chain account health data showed no real constraint violated. Waiting for 2 block
+confirmations (instead of 1) on every state-changing tx resolved it.
 
 ## TODO
 
-- [ ] Redeploy CreditPassport + PassportPool under the current design, update the address
-      table above
-- [ ] Live-verify the Morpho market bootstrap (`isLltvEnabled`/`isIrmEnabled`) and Aave
-      faucet behavior — both currently unverified against live testnet
+- [x] Deploy CreditPassport + PassportPool, wire sources + local reporter
+- [x] Live-verify the Morpho market bootstrap (`isLltvEnabled`/`isIrmEnabled`) and Aave
+      faucet behavior — both confirmed against live testnet before deploying
+- [x] Run `apps/worker/src/e2e.ts` live end to end — see the run log above
 - [ ] Example `txKey` and a link to the on-chain `AttestationProcessed` event for each
       source
 - [ ] Screenshot/log of a rejected replay attempt
 - [ ] Screenshot/log of a rejected failed-source-tx proof (`receiptStatus == 0`)
-- [ ] Screenshot/log of the score visibly rising across both cross-chain sources plus the
-      local reporter
 - [ ] Batch proof example, if implemented in time
