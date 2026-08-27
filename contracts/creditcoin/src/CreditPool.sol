@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {IStreamVerifier} from "./interfaces/IStreamVerifier.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
@@ -11,38 +12,47 @@ interface IERC20 {
     function decimals() external view returns (uint8);
 }
 
-/// @notice Holds LP liquidity, issues salary-stream-backed credit lines, and tracks
-///         wage-garnishment obligations recorded by StreamVerifierASC on salary withdrawal.
-///         Flat interest, no LP shares math, no liquidation engine yet.
-contract CreditPool {
-    uint256 public constant BASE_LTV_BPS = 5000; // 50%
+/// @notice Holds LP liquidity, issues credit lines against whitelisted token-vesting
+///         collateral, and tracks garnishment obligations recorded by the verifier on
+///         withdrawal. Flat interest, no LP shares math, no liquidation engine yet.
+contract CreditPool is Ownable {
     uint256 public constant LTV_STEP_BPS = 500; // +5% per fully-repaid loan
     uint256 public constant MAX_LTV_BPS = 7000; // 70% cap
-    uint256 public constant GARNISH_BPS = 3000; // 30% of each salary withdrawal
+    uint256 public constant GARNISH_BPS = 3000; // 30% of each withdrawal
     uint256 public constant INTEREST_BPS = 500; // flat 5% per loan (MVP; no time accrual)
     uint256 constant BPS_DENOM = 10_000;
 
     IERC20 public immutable usdc;
     IStreamVerifier public immutable verifier;
-    IPriceOracle public immutable priceOracle;
     uint8 public immutable debtDecimals;
-    uint8 public constant COLLATERAL_DECIMALS = 18; // SalaryStream collateral is native ETH (wei)
+
+    /// @notice Per-collateral-token config. A token not listed here is worth $0 as
+    ///         collateral no matter what a stream proves about it -- whitelisting is what
+    ///         replaces the old employer-staking sybil defense now that collateral can be
+    ///         any ERC-20, not just ETH from a registered employer.
+    struct CollateralConfig {
+        address priceOracle;
+        uint8 tokenDecimals;
+        uint256 baseLtvBps; // starting LTV for this token; volatile tokens should be set lower
+        bool enabled;
+    }
+
+    mapping(address => CollateralConfig) public collateralConfig;
 
     mapping(address => uint256) public debt; // principal + flat interest
-    mapping(address => uint256) public pendingGarnish; // owed from salary withdrawals
+    mapping(address => uint256) public pendingGarnish; // owed from stream withdrawals
     mapping(address => uint256) public repaidLoans; // drives LTV growth
-    mapping(address => bool) public frozen; // stream cancelled
 
     uint256 public totalLPDeposits;
     mapping(address => uint256) public lpDeposits; // pro-rata, no shares math (MVP)
 
+    event CollateralTokenSet(address indexed token, address priceOracle, uint256 baseLtvBps, bool enabled);
     event Deposited(address indexed lp, uint256 amount);
     event WithdrawnLP(address indexed lp, uint256 amount);
     event Borrowed(address indexed borrower, uint256 amount, uint256 newDebt);
     event Repaid(address indexed borrower, uint256 amount, uint256 remainingDebt);
     event GarnishRecorded(address indexed borrower, uint256 amount, uint256 pendingGarnish);
     event GarnishSettled(address indexed borrower, uint256 amount, uint256 remainingDebt);
-    event StreamFrozen(address indexed borrower);
     event LoanFullyRepaid(address indexed borrower, uint256 newRepaidLoans);
 
     modifier onlyVerifier() {
@@ -50,10 +60,9 @@ contract CreditPool {
         _;
     }
 
-    constructor(address usdc_, address verifier_, address priceOracle_) {
+    constructor(address usdc_, address verifier_) Ownable(msg.sender) {
         usdc = IERC20(usdc_);
         verifier = IStreamVerifier(verifier_);
-        priceOracle = IPriceOracle(priceOracle_);
         debtDecimals = usdc.decimals();
     }
 
@@ -61,32 +70,33 @@ contract CreditPool {
         return a < b ? a : b;
     }
 
-    /// @notice USD value of a wei (18-decimal ETH) amount, in the debt token's own
-    ///         decimals. Used for both collateral valuation and salary-withdrawal
-    ///         valuation, so the two can never drift onto different conversion logic.
-    function _weiToDebtValue(uint256 weiAmount) internal view returns (uint256) {
-        if (weiAmount == 0) return 0;
+    /// @notice Admin-curated collateral whitelist. Must be called before any stream backed
+    ///         by `token` can be borrowed against.
+    function setCollateralToken(address token, address priceOracle, uint256 baseLtvBps, bool enabled)
+        external
+        onlyOwner
+    {
+        require(baseLtvBps <= MAX_LTV_BPS, "ltv above cap");
+        collateralConfig[token] = CollateralConfig({
+            priceOracle: priceOracle,
+            tokenDecimals: IERC20(token).decimals(),
+            baseLtvBps: baseLtvBps,
+            enabled: enabled
+        });
+        emit CollateralTokenSet(token, priceOracle, baseLtvBps, enabled);
+    }
 
-        uint256 oraclePrice = priceOracle.price();
-        uint8 oracleDecimals = priceOracle.decimals();
+    /// @notice USD value of a collateral-token amount, in the debt token's own decimals.
+    ///         Used for both collateral valuation and withdrawal valuation, so the two can
+    ///         never drift onto different conversion logic.
+    function _tokenValueToDebtValue(uint256 amount, CollateralConfig memory cfg) internal view returns (uint256) {
+        if (amount == 0) return 0;
 
-        // weiAmount (18 decimals) * price (oracleDecimals) / 1e18 -> USD value, still
-        // scaled by oracleDecimals. Multiply before dividing to keep full precision.
-        uint256 usdValue = weiAmount * oraclePrice / (10 ** COLLATERAL_DECIMALS);
+        uint256 oraclePrice = IPriceOracle(cfg.priceOracle).price();
+        uint8 oracleDecimals = IPriceOracle(cfg.priceOracle).decimals();
+
+        uint256 usdValue = amount * oraclePrice / (10 ** cfg.tokenDecimals);
         return _rescale(usdValue, oracleDecimals, debtDecimals);
-    }
-
-    /// @notice USD value of the borrower's remaining locked collateral, in the debt
-    ///         token's own decimals. remainingLocked() is wei (18-decimal ETH); without
-    ///         this conversion a raw wei number would be spent directly as if it were
-    ///         already a tUSDC amount, which is off by many orders of magnitude.
-    function collateralValue(address user) public view returns (uint256) {
-        return _weiToDebtValue(verifier.remainingLocked(user));
-    }
-
-    function creditLimit(address user) public view returns (uint256) {
-        uint256 ltv = min(BASE_LTV_BPS + repaidLoans[user] * LTV_STEP_BPS, MAX_LTV_BPS);
-        return collateralValue(user) * ltv / BPS_DENOM;
     }
 
     function _rescale(uint256 amount, uint8 fromDecimals, uint8 toDecimals) internal pure returns (uint256) {
@@ -95,8 +105,20 @@ contract CreditPool {
         return amount * (10 ** (toDecimals - fromDecimals));
     }
 
+    function collateralValue(address user) public view returns (uint256) {
+        CollateralConfig memory cfg = collateralConfig[verifier.collateralToken(user)];
+        if (!cfg.enabled) return 0;
+        return _tokenValueToDebtValue(verifier.remainingLocked(user), cfg);
+    }
+
+    function creditLimit(address user) public view returns (uint256) {
+        CollateralConfig memory cfg = collateralConfig[verifier.collateralToken(user)];
+        if (!cfg.enabled) return 0;
+        uint256 ltv = min(cfg.baseLtvBps + repaidLoans[user] * LTV_STEP_BPS, MAX_LTV_BPS);
+        return _tokenValueToDebtValue(verifier.remainingLocked(user), cfg) * ltv / BPS_DENOM;
+    }
+
     function borrow(uint256 amount) external {
-        require(!frozen[msg.sender], "stream cancelled");
         require(pendingGarnish[msg.sender] == 0, "settle garnish first");
 
         uint256 newDebt = debt[msg.sender] + amount + (amount * INTEREST_BPS / BPS_DENOM);
@@ -108,22 +130,19 @@ contract CreditPool {
         emit Borrowed(msg.sender, amount, newDebt);
     }
 
-    /// @notice Called by StreamVerifierASC when a proven SalaryStreamWithdrawn event is
-    ///         processed. Only records the obligation, the tUSDC moves later when the
-    ///         borrower calls settleGarnish. Can't seize funds on Ethereum directly.
-    /// @param salaryWei the withdrawn amount, in wei (ETH) - same units as remainingLocked,
-    ///        so it needs the same wei->debt-token conversion before GARNISH_BPS is applied.
-    function onSalaryWithdrawn(address b, uint256 salaryWei) external onlyVerifier {
+    /// @notice Called by the verifier when a proven withdrawal from the borrower's vesting
+    ///         stream is processed. Only records the obligation, the tUSDC moves later
+    ///         when the borrower calls settleGarnish. Can't seize funds on Ethereum directly.
+    /// @param b the borrower whose stream was withdrawn from
+    /// @param amount the withdrawn amount, in the collateral token's own decimals
+    function onTokenWithdrawn(address b, uint256 amount) external onlyVerifier {
         if (debt[b] == 0) return;
-        uint256 salaryValue = _weiToDebtValue(salaryWei);
-        uint256 owed = min(salaryValue * GARNISH_BPS / BPS_DENOM, debt[b]);
+
+        CollateralConfig memory cfg = collateralConfig[verifier.collateralToken(b)];
+        uint256 value = _tokenValueToDebtValue(amount, cfg);
+        uint256 owed = min(value * GARNISH_BPS / BPS_DENOM, debt[b]);
         pendingGarnish[b] += owed;
         emit GarnishRecorded(b, owed, pendingGarnish[b]);
-    }
-
-    function onStreamCancelled(address b) external onlyVerifier {
-        frozen[b] = true;
-        emit StreamFrozen(b);
     }
 
     function settleGarnish(uint256 amount) external {

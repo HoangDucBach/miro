@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {CreditPool} from "../src/CreditPool.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 import {FixedPriceOracle} from "../src/FixedPriceOracle.sol";
@@ -9,13 +10,33 @@ import {IStreamVerifier} from "../src/interfaces/IStreamVerifier.sol";
 
 contract MockVerifier is IStreamVerifier {
     mapping(address => uint256) public locked;
+    mapping(address => address) public tokenOf;
 
     function setRemainingLocked(address user, uint256 amount) external {
         locked[user] = amount;
     }
 
+    function setCollateralTokenFor(address user, address token) external {
+        tokenOf[user] = token;
+    }
+
     function remainingLocked(address user) external view returns (uint256) {
         return locked[user];
+    }
+
+    function collateralToken(address user) external view returns (address) {
+        return tokenOf[user];
+    }
+}
+
+/// @notice Just enough of an ERC-20 for CreditPool.setCollateralToken's decimals() read.
+///         Real collateral tokens are vested via Sablier and never touched directly by
+///         CreditPool, so nothing else on this interface is exercised.
+contract StubCollateralToken {
+    uint8 public immutable decimals;
+
+    constructor(uint8 decimals_) {
+        decimals = decimals_;
     }
 }
 
@@ -24,28 +45,34 @@ contract CreditPoolTest is Test {
     TestUSDC usdc;
     MockVerifier verifier;
     FixedPriceOracle oracle;
+    StubCollateralToken demoToken;
 
     address borrower = makeAddr("borrower");
     address lp = makeAddr("lp");
     address lp2 = makeAddr("lp2");
 
-    uint256 constant PRICE_USD_PER_ETH = 3000;
+    uint256 constant PRICE_USD_PER_TOKEN = 3000;
+    uint256 constant BASE_LTV_BPS = 5000;
 
     function setUp() public {
         usdc = new TestUSDC();
         verifier = new MockVerifier();
-        oracle = new FixedPriceOracle(PRICE_USD_PER_ETH * 1e8);
-        pool = new CreditPool(address(usdc), address(verifier), address(oracle));
+        oracle = new FixedPriceOracle(PRICE_USD_PER_TOKEN * 1e8);
+        demoToken = new StubCollateralToken(18);
+        pool = new CreditPool(address(usdc), address(verifier));
+        pool.setCollateralToken(address(demoToken), address(oracle), BASE_LTV_BPS, true);
 
         _seedLP(lp, 10_000 * 1e6);
-        verifier.setRemainingLocked(borrower, _weiFor(6000 * 1e6)); // $6000 unvested, at $3000/ETH
+        verifier.setCollateralTokenFor(borrower, address(demoToken));
+        verifier.setRemainingLocked(borrower, _weiFor(6000 * 1e6)); // $6000 unvested, at $3000/token
     }
 
-    /// Converts a 6-decimal USD collateral value into the wei of ETH that produces it,
-    /// given this test's fixed oracle price — so test expectations can stay expressed in
-    /// USD (tUSDC) terms like before, instead of everyone hand-computing wei amounts.
+    /// Converts a 6-decimal USD collateral value into the 18-decimal token amount that
+    /// produces it, given this test's fixed oracle price — so test expectations can stay
+    /// expressed in USD (tUSDC) terms like before, instead of everyone hand-computing
+    /// 18-decimal token amounts.
     function _weiFor(uint256 usd6) internal pure returns (uint256) {
-        return usd6 * 1e12 / PRICE_USD_PER_ETH;
+        return usd6 * 1e12 / PRICE_USD_PER_TOKEN;
     }
 
     function _seedLP(address who, uint256 amount) internal {
@@ -64,7 +91,35 @@ contract CreditPoolTest is Test {
     }
 
     // =================================================================
-    // collateralValue (wei -> USD conversion via the price oracle)
+    // setCollateralToken (admin whitelist)
+    // =================================================================
+
+    function test_setCollateralToken_onlyOwner() public {
+        vm.prank(address(0xdead));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xdead)));
+        pool.setCollateralToken(address(demoToken), address(oracle), BASE_LTV_BPS, true);
+    }
+
+    function test_setCollateralToken_revertsLtvAboveCap() public {
+        vm.expectRevert("ltv above cap");
+        pool.setCollateralToken(address(demoToken), address(oracle), 7001, true);
+    }
+
+    function test_setCollateralToken_disablingToken_zeroesOutValueAndLimit() public {
+        pool.setCollateralToken(address(demoToken), address(oracle), BASE_LTV_BPS, false);
+        assertEq(pool.collateralValue(borrower), 0);
+        assertEq(pool.creditLimit(borrower), 0);
+    }
+
+    function test_collateralValue_zeroForUnwhitelistedToken() public {
+        StubCollateralToken unlisted = new StubCollateralToken(18);
+        verifier.setCollateralTokenFor(borrower, address(unlisted));
+        assertEq(pool.collateralValue(borrower), 0);
+        assertEq(pool.creditLimit(borrower), 0);
+    }
+
+    // =================================================================
+    // collateralValue (token amount -> USD conversion via the price oracle)
     // =================================================================
 
     function test_collateralValue_zeroWhenNoLockedValue() public {
@@ -72,25 +127,25 @@ contract CreditPoolTest is Test {
         assertEq(pool.collateralValue(borrower), 0);
     }
 
-    function test_collateralValue_convertsWeiToUsdAtOraclePrice() public {
-        verifier.setRemainingLocked(borrower, 1 ether); // 1 ETH at $3000/ETH
+    function test_collateralValue_convertsTokenAmountToUsdAtOraclePrice() public {
+        verifier.setRemainingLocked(borrower, 1 ether); // 1 token at $3000/token
         assertEq(pool.collateralValue(borrower), 3000 * 1e6);
     }
 
-    function test_collateralValue_scalesLinearlyWithWeiAmount() public {
+    function test_collateralValue_scalesLinearlyWithTokenAmount() public {
         verifier.setRemainingLocked(borrower, 2 ether);
         assertEq(pool.collateralValue(borrower), 6000 * 1e6);
     }
 
     function test_collateralValue_risesWhenOraclePriceRises() public {
         verifier.setRemainingLocked(borrower, 1 ether);
-        oracle.setPrice(6000 * 1e8); // ETH doubles in price
+        oracle.setPrice(6000 * 1e8); // token doubles in price
         assertEq(pool.collateralValue(borrower), 6000 * 1e6);
     }
 
     function test_collateralValue_fallsWhenOraclePriceFalls() public {
         verifier.setRemainingLocked(borrower, 1 ether);
-        oracle.setPrice(1500 * 1e8); // ETH halves in price
+        oracle.setPrice(1500 * 1e8); // token halves in price
         assertEq(pool.collateralValue(borrower), 1500 * 1e6);
     }
 
@@ -114,7 +169,7 @@ contract CreditPoolTest is Test {
 
     function test_creditLimit_scalesWithRemainingLocked() public {
         verifier.setRemainingLocked(borrower, _weiFor(10_000 * 1e6));
-        // _weiFor and the contract's own wei->USD conversion each truncate on integer
+        // _weiFor and the contract's own token->USD conversion each truncate on integer
         // division, so round-tripping isn't exact — off by at most 1 unit of tUSDC.
         assertApproxEqAbs(pool.creditLimit(borrower), 5000 * 1e6, 1);
     }
@@ -224,20 +279,11 @@ contract CreditPoolTest is Test {
         pool.borrow(amount);
     }
 
-    function test_borrow_revertsWhenFrozen() public {
-        vm.prank(address(verifier));
-        pool.onStreamCancelled(borrower);
-
-        vm.prank(borrower);
-        vm.expectRevert("stream cancelled");
-        pool.borrow(100 * 1e6);
-    }
-
     function test_borrow_revertsWhenPendingGarnishNonzero() public {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6);
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6));
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6));
 
         vm.prank(borrower);
         vm.expectRevert("settle garnish first");
@@ -286,17 +332,17 @@ contract CreditPoolTest is Test {
     }
 
     // =================================================================
-    // onSalaryWithdrawn
+    // onTokenWithdrawn
     // =================================================================
 
-    function test_onSalaryWithdrawn_recordsGarnish_freezesBorrow() public {
+    function test_onTokenWithdrawn_recordsGarnish_freezesBorrow() public {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6);
 
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6)); // 30% of 1000 = 300
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6)); // 30% of 1000 = 300
 
-        // _weiFor and the contract's wei->USD conversion each truncate, so this can land
+        // _weiFor and the contract's token->USD conversion each truncate, so this can land
         // a unit below the round number.
         assertApproxEqAbs(pool.pendingGarnish(borrower), 300 * 1e6, 1);
 
@@ -305,81 +351,40 @@ contract CreditPoolTest is Test {
         pool.borrow(100 * 1e6);
     }
 
-    function test_onSalaryWithdrawn_noOpWhenNoDebt() public {
+    function test_onTokenWithdrawn_noOpWhenNoDebt() public {
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6));
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6));
         assertEq(pool.pendingGarnish(borrower), 0);
     }
 
-    function test_onSalaryWithdrawn_capsAtCurrentDebt() public {
+    function test_onTokenWithdrawn_capsAtCurrentDebt() public {
         vm.prank(borrower);
         pool.borrow(100 * 1e6); // debt = 105e6
 
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1_000_000 * 1e6)); // 30% would be huge
+        pool.onTokenWithdrawn(borrower, _weiFor(1_000_000 * 1e6)); // 30% would be huge
 
         assertEq(pool.pendingGarnish(borrower), pool.debt(borrower)); // capped at debt, not 30%
     }
 
-    function test_onSalaryWithdrawn_multipleCallsCanExceedDebt() public {
+    function test_onTokenWithdrawn_multipleCallsCanExceedDebt() public {
         // Each call caps against current debt independently, so repeated withdrawals
         // before settlement can push pendingGarnish above debt.
         vm.prank(borrower);
         pool.borrow(1000 * 1e6); // debt = 1050e6
 
         vm.startPrank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish = min(3000e6, 1050e6) = 1050e6
-        pool.onSalaryWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish again = min(3000e6, 1050e6) = 1050e6
+        pool.onTokenWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish = min(3000e6, 1050e6) = 1050e6
+        pool.onTokenWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish again = min(3000e6, 1050e6) = 1050e6
         vm.stopPrank();
 
         assertEq(pool.pendingGarnish(borrower), 2100 * 1e6);
         assertGt(pool.pendingGarnish(borrower), pool.debt(borrower));
     }
 
-    function test_onlyVerifier_canCallOnSalaryWithdrawn() public {
+    function test_onlyVerifier_canCallOnTokenWithdrawn() public {
         vm.expectRevert("not verifier");
-        pool.onSalaryWithdrawn(borrower, _weiFor(100 * 1e6));
-    }
-
-    function test_onlyVerifier_canCallOnStreamCancelled() public {
-        vm.expectRevert("not verifier");
-        pool.onStreamCancelled(borrower);
-    }
-
-    // =================================================================
-    // onStreamCancelled
-    // =================================================================
-
-    function test_onStreamCancelled_freezesBorrowing() public {
-        assertFalse(pool.frozen(borrower));
-
-        vm.prank(address(verifier));
-        pool.onStreamCancelled(borrower);
-
-        assertTrue(pool.frozen(borrower));
-        vm.prank(borrower);
-        vm.expectRevert("stream cancelled");
-        pool.borrow(1 * 1e6);
-    }
-
-    function test_onStreamCancelled_doesNotTouchDebtOrGarnish() public {
-        vm.prank(borrower);
-        pool.borrow(1000 * 1e6);
-        uint256 debtBefore = pool.debt(borrower);
-
-        vm.prank(address(verifier));
-        pool.onStreamCancelled(borrower);
-
-        assertEq(pool.debt(borrower), debtBefore);
-        assertEq(pool.pendingGarnish(borrower), 0);
-    }
-
-    function test_onStreamCancelled_emitsEvent() public {
-        vm.expectEmit(true, false, false, false);
-        emit CreditPool.StreamFrozen(borrower);
-
-        vm.prank(address(verifier));
-        pool.onStreamCancelled(borrower);
+        pool.onTokenWithdrawn(borrower, _weiFor(100 * 1e6));
     }
 
     // =================================================================
@@ -390,7 +395,7 @@ contract CreditPoolTest is Test {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6);
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6));
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6));
 
         uint256 pending = pool.pendingGarnish(borrower); // ~300e6, off by truncation
         uint256 debtBefore = pool.debt(borrower);
@@ -408,7 +413,7 @@ contract CreditPoolTest is Test {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6);
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish ~ 300e6
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish ~ 300e6
 
         uint256 pendingBefore = pool.pendingGarnish(borrower);
         _giveUSDC(borrower, 100 * 1e6);
@@ -428,7 +433,7 @@ contract CreditPoolTest is Test {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6);
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish = 300e6
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish = 300e6
 
         _giveUSDC(borrower, 400 * 1e6);
         vm.startPrank(borrower);
@@ -444,15 +449,15 @@ contract CreditPoolTest is Test {
         pool.settleGarnish(0);
     }
 
-    /// @dev Repeated onSalaryWithdrawn calls can leave pendingGarnish above debt. Settling
+    /// @dev Repeated onTokenWithdrawn calls can leave pendingGarnish above debt. Settling
     ///      in full should floor debt at 0 instead of reverting.
     function test_settleGarnish_whenPendingExceedsDebt_floorsDebtAtZeroWithoutReverting() public {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6); // debt = 1050e6
 
         vm.startPrank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish = 1050e6
-        pool.onSalaryWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish again = 1050e6
+        pool.onTokenWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish = 1050e6
+        pool.onTokenWithdrawn(borrower, _weiFor(10_000 * 1e6)); // garnish again = 1050e6
         vm.stopPrank();
 
         uint256 pending = pool.pendingGarnish(borrower); // 2100e6, far above debt (1050e6)
@@ -474,7 +479,7 @@ contract CreditPoolTest is Test {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6); // debt = 1050e6
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish = 300e6
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish = 300e6
 
         _giveUSDC(borrower, 1050 * 1e6);
         vm.startPrank(borrower);
@@ -501,7 +506,7 @@ contract CreditPoolTest is Test {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6); // debt = 1050e6, no oracle conversion involved, exact
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish ~ 300e6
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish ~ 300e6
 
         // Repay down to exactly `pending`, so settling it in full zeroes out both.
         uint256 pending = pool.pendingGarnish(borrower);
@@ -559,7 +564,7 @@ contract CreditPoolTest is Test {
         vm.prank(borrower);
         pool.borrow(1000 * 1e6);
         vm.prank(address(verifier));
-        pool.onSalaryWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish = 300e6
+        pool.onTokenWithdrawn(borrower, _weiFor(1000 * 1e6)); // pendingGarnish = 300e6
 
         uint256 owed = pool.debt(borrower);
         _giveUSDC(borrower, owed);

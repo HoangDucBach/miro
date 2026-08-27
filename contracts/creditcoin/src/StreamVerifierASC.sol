@@ -4,52 +4,73 @@ pragma solidity ^0.8.23;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EvmV1Decoder} from "./libs/EvmV1Decoder.sol";
 import {INativeQueryVerifier, NativeQueryVerifierLib} from "./libs/NativeQueryVerifier.sol";
-import {IEmployerRegistry} from "./interfaces/IEmployerRegistry.sol";
 import {ICreditPool} from "./interfaces/ICreditPool.sol";
 import {IStreamVerifier} from "./interfaces/IStreamVerifier.sol";
 
-/// @notice Verifies SalaryStream lifecycle events emitted on Sepolia through the Block
-///         Prover Precompile, then routes them into EmployerRegistry-gated StreamRecords
-///         and CreditPool calls.
-/// @dev Flow per call: check replay, verify the proof, validate receipt status and tx type,
-///      then run business logic. This contract only verifies and stores stream state,
-///      CreditPool owns the money logic.
+/// @notice Verifies Sablier Lockup lifecycle events emitted on Sepolia through the Block
+///         Prover Precompile, then routes proven withdrawals into CreditPool.
+/// @dev Only accepts streams that are provably non-cancelable and non-transferable at
+///      creation time. Neither flag can ever flip back once set (renounce() on Sablier is
+///      one-directional, cancelable -> non-cancelable, and transferability has no setter
+///      at all), so the recipient recorded here is a permanent identity for the life of
+///      the stream -- no separate ownerOf() re-check is ever needed.
 contract StreamVerifierASC is IStreamVerifier, Ownable {
     INativeQueryVerifier public immutable VERIFIER;
-    IEmployerRegistry public immutable registry;
     ICreditPool public pool; // set once by owner, after CreditPool is deployed
     uint64 public immutable SOURCE_CHAIN_KEY; // Sepolia chainKey, resolved via SDK at deploy time
-    address public immutable SOURCE_STREAM_CONTRACT; // only accept logs from our SalaryStream
+    address public immutable SOURCE_SABLIER_LOCKUP; // only accept logs from Sablier's real deployment
 
     mapping(bytes32 => bool) public processedQueries; // replay protection, keyed on txKey
 
     struct StreamRecord {
-        address employer;
-        uint256 deposit;
-        uint256 ratePerSecond;
-        uint256 startTime;
-        uint256 stopTime;
-        uint256 withdrawn;
-        bool cancelled;
+        address borrower;
+        address token;
+        uint128 depositAmount;
+        uint40 startTime;
+        uint40 endTime;
         bool exists;
     }
 
-    mapping(address => StreamRecord) public streamOf; // 1 active stream per borrower (MVP)
+    mapping(uint256 => StreamRecord) public streamById; // keyed by Sablier's own streamId
+    mapping(address => uint256) public streamIdOf; // 1 active stream per borrower (MVP)
 
-    bytes32 constant SIG_CREATED =
-        keccak256("SalaryStreamCreated(uint256,address,address,uint256,uint256,uint256,uint256)");
-    bytes32 constant SIG_WITHDRAWN = keccak256("SalaryStreamWithdrawn(uint256,address,uint256)");
-    bytes32 constant SIG_CANCELLED = keccak256("SalaryStreamCancelled(uint256,uint256,uint256)");
+    // Mirrors of Sablier's own event structs, just enough to abi.decode non-indexed data.
+    // Field names/order verified 2026-08-26 against sablier-labs/sdk/abi/lockup/v4.0/SablierLockup.json.
+    struct SablierTimestamps {
+        uint40 start;
+        uint40 end;
+    }
+
+    struct SablierCreateEventCommon {
+        address funder;
+        address sender;
+        address recipient;
+        uint128 depositAmount;
+        address token;
+        bool cancelable;
+        bool transferable;
+        SablierTimestamps timestamps;
+        string shape;
+    }
+
+    struct SablierUnlockAmounts {
+        uint128 start;
+        uint128 cliff;
+    }
+
+    bytes32 constant SIG_CREATED = keccak256(
+        "CreateLockupLinearStream(uint256,(address,address,address,uint128,address,bool,bool,(uint40,uint40),string),uint40,uint40,(uint128,uint128))"
+    );
+    bytes32 constant SIG_WITHDRAWN = keccak256("WithdrawFromLockupStream(uint256,address,address,uint128)");
 
     event PoolSet(address pool);
-    event StreamRegistered(address indexed borrower, address indexed employer, uint256 deposit);
+    event StreamRegistered(address indexed borrower, address indexed token, uint256 depositAmount);
     event StreamEventProcessed(bytes32 indexed txKey, bytes32 indexed sig, address indexed borrower);
 
-    constructor(address registry_, uint64 sourceChainKey_, address sourceStreamContract_) Ownable(msg.sender) {
-        registry = IEmployerRegistry(registry_);
+    constructor(uint64 sourceChainKey_, address sourceSablierLockup_) Ownable(msg.sender) {
         VERIFIER = NativeQueryVerifierLib.getVerifier();
         SOURCE_CHAIN_KEY = sourceChainKey_;
-        SOURCE_STREAM_CONTRACT = sourceStreamContract_;
+        SOURCE_SABLIER_LOCKUP = sourceSablierLockup_;
     }
 
     function setPool(address pool_) external onlyOwner {
@@ -106,7 +127,7 @@ contract StreamVerifierASC is IStreamVerifier, Ownable {
     function _routeLogs(EvmV1Decoder.ReceiptFields memory receipt, bytes32 txKey) internal {
         for (uint256 i = 0; i < receipt.receiptLogs.length; i++) {
             EvmV1Decoder.LogEntry memory log = receipt.receiptLogs[i];
-            if (log.address_ != SOURCE_STREAM_CONTRACT) continue;
+            if (log.address_ != SOURCE_SABLIER_LOCKUP) continue;
             if (log.topics.length == 0) continue;
 
             bytes32 sig = log.topics[0];
@@ -114,63 +135,64 @@ contract StreamVerifierASC is IStreamVerifier, Ownable {
                 _handleCreated(log, txKey);
             } else if (sig == SIG_WITHDRAWN) {
                 _handleWithdrawn(log, txKey);
-            } else if (sig == SIG_CANCELLED) {
-                _handleCancelled(log, txKey);
             }
+            // CancelLockupStream is intentionally not routed: only non-cancelable streams
+            // are ever recorded below, so a legitimate cancel can never target a stream
+            // this contract has accepted as collateral.
         }
     }
 
     function _handleCreated(EvmV1Decoder.LogEntry memory log, bytes32 txKey) internal {
-        // topics: [sig, streamId, sender, recipient]; data: deposit, ratePerSecond, startTime, stopTime
-        address employer = address(uint160(uint256(log.topics[2])));
-        address borrower = address(uint160(uint256(log.topics[3])));
-        require(registry.isVerified(employer), "employer not verified");
+        // topics: [sig, streamId]; data: commonParams, cliffTime, granularity, unlockAmounts
+        uint256 streamId = uint256(log.topics[1]);
+        (SablierCreateEventCommon memory common,,,) =
+            abi.decode(log.data, (SablierCreateEventCommon, uint40, uint40, SablierUnlockAmounts));
 
-        (uint256 deposit, uint256 ratePerSecond, uint256 startTime, uint256 stopTime) =
-            abi.decode(log.data, (uint256, uint256, uint256, uint256));
+        require(!common.cancelable, "stream is cancelable");
+        require(!common.transferable, "stream is transferable");
 
-        streamOf[borrower] = StreamRecord({
-            employer: employer,
-            deposit: deposit,
-            ratePerSecond: ratePerSecond,
-            startTime: startTime,
-            stopTime: stopTime,
-            withdrawn: 0,
-            cancelled: false,
+        streamById[streamId] = StreamRecord({
+            borrower: common.recipient,
+            token: common.token,
+            depositAmount: common.depositAmount,
+            startTime: common.timestamps.start,
+            endTime: common.timestamps.end,
             exists: true
         });
+        streamIdOf[common.recipient] = streamId;
 
-        emit StreamRegistered(borrower, employer, deposit);
-        emit StreamEventProcessed(txKey, SIG_CREATED, borrower);
+        emit StreamRegistered(common.recipient, common.token, common.depositAmount);
+        emit StreamEventProcessed(txKey, SIG_CREATED, common.recipient);
     }
 
     function _handleWithdrawn(EvmV1Decoder.LogEntry memory log, bytes32 txKey) internal {
-        // topics: [sig, streamId, recipient]; data: amount
-        address borrower = address(uint160(uint256(log.topics[2])));
-        uint256 amount = abi.decode(log.data, (uint256));
+        // topics: [sig, streamId, to, token]; data: amount. `to` is just the withdrawal
+        // destination the recipient chose, not necessarily their own address -- the
+        // borrower identity for garnishment purposes is looked up by streamId instead.
+        uint256 streamId = uint256(log.topics[1]);
+        uint128 amount = abi.decode(log.data, (uint128));
 
-        StreamRecord storage rec = streamOf[borrower];
+        StreamRecord storage rec = streamById[streamId];
         require(rec.exists, "unknown stream");
-        rec.withdrawn += amount;
 
-        pool.onSalaryWithdrawn(borrower, amount);
-        emit StreamEventProcessed(txKey, SIG_WITHDRAWN, borrower);
-    }
-
-    function _handleCancelled(EvmV1Decoder.LogEntry memory, bytes32 txKey) internal pure {
-        // TODO: SalaryStreamCancelled doesn't index the recipient, so there's no borrower
-        // to route this to yet. Add an indexed recipient to the source event to fix this.
-        txKey;
-        revert("cancel routing: TODO wire recipient lookup");
+        pool.onTokenWithdrawn(rec.borrower, amount);
+        emit StreamEventProcessed(txKey, SIG_WITHDRAWN, rec.borrower);
     }
 
     /// @inheritdoc IStreamVerifier
     function remainingLocked(address user) external view returns (uint256) {
-        StreamRecord memory s = streamOf[user];
-        if (!s.exists || s.cancelled) return 0;
-        uint256 t = block.timestamp >= s.stopTime ? s.stopTime : block.timestamp;
-        uint256 vested = (t - s.startTime) * s.ratePerSecond;
-        return s.deposit - vested; // portion not vested yet
+        StreamRecord memory s = streamById[streamIdOf[user]];
+        if (!s.exists) return 0;
+        if (block.timestamp <= s.startTime) return s.depositAmount;
+
+        uint256 t = block.timestamp >= s.endTime ? s.endTime : block.timestamp;
+        uint256 vested = uint256(s.depositAmount) * (t - s.startTime) / (s.endTime - s.startTime);
+        return s.depositAmount - vested; // portion not vested yet
+    }
+
+    /// @inheritdoc IStreamVerifier
+    function collateralToken(address user) external view returns (address) {
+        return streamById[streamIdOf[user]].token;
     }
 
     /// @dev Packs chainKey, blockHeight and txIndex into a 72-byte buffer and hashes it.

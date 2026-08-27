@@ -1,12 +1,7 @@
 import "dotenv/config";
-import { Contract, Wallet, parseEther, formatUnits } from "ethers";
+import { Contract, Wallet, formatUnits } from "ethers";
 import type { chainInfo, proofProvider } from "@gluwa/usc-sdk";
-import {
-  SALARY_STREAM_ABI,
-  CREDIT_POOL_ABI,
-  TEST_USDC_ABI,
-  EMPLOYER_REGISTRY_ABI,
-} from "@miro/shared";
+import { SABLIER_LOCKUP_ABI, NEBULA_TOKEN_ABI, CREDIT_POOL_ABI, TEST_USDC_ABI, PRICE_ORACLE_ABI } from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
   ATTESTATION_TIMEOUT_MS,
@@ -19,53 +14,60 @@ import { makeHostedProofBuilder } from "./lib/proof.js";
 import { ascContract, submitProof } from "./lib/submitter.js";
 
 /**
- * Scripted E2E demo flow:
- *   register employer -> create stream -> relay -> borrow -> withdraw salary ->
- *   relay -> garnish freezes borrowing -> settle -> repay -> LTV steps up
+ * Scripted E2E demo flow (token-vesting design):
+ *   whitelist NEBULA as collateral -> grantor mints + locks it in a real Sablier stream ->
+ *   relay -> borrow -> withdraw vested NEBULA -> relay -> garnish freezes borrowing ->
+ *   settle -> repay -> LTV steps up
  *
- * Runs against real deployed contracts (STREAM_CONTRACT / ASC_CONTRACT / etc in .env).
- * Inlines the same relay steps apps/worker/src/index.ts runs continuously, so this
- * script doesn't need a separate worker process running alongside it.
+ * Runs against real deployed contracts (SABLIER_LOCKUP_CONTRACT / ASC_CONTRACT / etc in
+ * .env) plus Sablier's own real, unmodified SablierLockup deployment on Sepolia -- see
+ * docs/attestcoin-integration.md for that address. Inlines the same relay steps
+ * apps/worker/src/index.ts runs continuously, so this script doesn't need a separate
+ * worker process running alongside it.
  *
  * Attestation waits are minutes-scale on testnet, so a full run can take a while.
  * For the demo video, pre-record segments instead of running this live.
  */
 
-// 5 minutes turned out too short: the relay pipeline itself (two attestation waits, tx
-// confirmations) regularly eats several minutes end to end, so by the time creditLimit
-// was checked the stream had already fully vested and there was nothing left to borrow
-// against. 30 minutes leaves enough of a runway for that to stay meaningfully nonzero.
+// 5 minutes turned out too short in the salary-stream design: the relay pipeline itself
+// (two attestation waits, tx confirmations) regularly eats several minutes end to end, so
+// by the time creditLimit was checked the stream had already fully vested and there was
+// nothing left to borrow against. 30 minutes leaves enough of a runway for that to stay
+// meaningfully nonzero -- same reasoning applies here.
 const STREAM_DURATION_SECONDS = 30 * 60;
-const STREAM_DEPOSIT = parseEther("0.002");
-const VEST_WAIT_MS = 60_000; // real wall-clock wait for some salary to vest before withdrawing
+const STREAM_DEPOSIT = 6000n * 10n ** 18n; // 6000 NEBULA, 18 decimals
+const DEMO_PRICE_USD = 3000n * 10n ** 8n; // $3000/NEBULA, 8 decimals (FixedPriceOracle convention)
+const DEMO_BASE_LTV_BPS = 4000n; // lower than a blue-chip-collateral cap: NEBULA is a thin-liquidity demo token
+const VEST_WAIT_MS = 60_000; // real wall-clock wait for some NEBULA to vest before withdrawing
 
 async function main() {
   const source = sourceProvider();
   const cc = creditcoinProvider();
 
-  const streamAddress = requireEnv("STREAM_CONTRACT");
+  const sablierLockupAddress = requireEnv("SABLIER_LOCKUP_CONTRACT");
+  const nebulaAddress = requireEnv("NEBULA_TOKEN_CONTRACT");
   const ascAddress = requireEnv("ASC_CONTRACT");
   const poolAddress = requireEnv("CREDIT_POOL_CONTRACT");
   const usdcAddress = requireEnv("TEST_USDC_CONTRACT");
-  const registryAddress = requireEnv("EMPLOYER_REGISTRY_CONTRACT");
+  const oracleAddress = requireEnv("PRICE_ORACLE_CONTRACT");
   const proverUrl = process.env.PROVER_URL ?? "https://prover.cc3-testnet.creditcoin.network";
 
-  const employerKey = requireEnv("DEPLOYER_PRIVATE_KEY");
+  const grantorKey = requireEnv("DEPLOYER_PRIVATE_KEY"); // plays the token-grantor role on Sepolia
+  const poolOwnerKey = requireEnv("CC3_DEPLOYER_PRIVATE_KEY"); // CreditPool owner, whitelists collateral
   const workerKey = requireEnv("WORKER_PRIVATE_KEY"); // relay role, submits proofs to the ASC
 
-  const employerSepolia = new Wallet(employerKey, source);
-  const employerCC = new Wallet(employerKey, cc);
+  const grantorSepolia = new Wallet(grantorKey, source);
+  const poolOwnerCC = new Wallet(poolOwnerKey, cc);
 
-  // SalaryStream requires recipient != sender, so the borrower can't be the employer's own
-  // key. Generate a fresh throwaway borrower per run (also sidesteps StreamVerifierASC's
-  // one-active-stream-per-borrower limit colliding with a previous run's leftover state),
-  // funded with just enough ETH/tCTC from the employer to cover its own gas.
+  // Generate a fresh throwaway borrower per run -- sidesteps StreamVerifierASC's
+  // one-active-stream-per-borrower limit colliding with a previous run's leftover state,
+  // funded with just enough ETH/tCTC from the grantor to cover its own gas.
   const borrower = Wallet.createRandom();
   const borrowerSepolia = borrower.connect(source);
   const borrowerCC = borrower.connect(cc);
 
-  const stream = new Contract(streamAddress, SALARY_STREAM_ABI, employerSepolia);
-  const registry = new Contract(registryAddress, EMPLOYER_REGISTRY_ABI, employerCC);
+  const sablierLockup = new Contract(sablierLockupAddress, SABLIER_LOCKUP_ABI, grantorSepolia);
+  const nebula = new Contract(nebulaAddress, NEBULA_TOKEN_ABI, grantorSepolia);
   const pool = new Contract(poolAddress, CREDIT_POOL_ABI, borrowerCC);
   const usdc = new Contract(usdcAddress, TEST_USDC_ABI, borrowerCC);
   const asc = ascContract(cc, ascAddress, workerKey);
@@ -74,36 +76,60 @@ async function main() {
   const sepolia = await resolveSourceChainKey(chainInfoProvider);
   const builder = makeHostedProofBuilder(sepolia.chainKey, proverUrl);
 
-  console.log(`[e2e] employer=${employerSepolia.address} borrower=${borrower.address}`);
+  console.log(`[e2e] grantor=${grantorSepolia.address} borrower=${borrower.address}`);
 
-  console.log("[e2e] 0/10 funding the fresh borrower wallet for gas...");
-  const fundSepoliaTx = await employerSepolia.sendTransaction({ to: borrower.address, value: parseEther("0.005") });
+  console.log("[e2e] 0/11 funding the fresh borrower wallet for gas...");
+  const fundSepoliaTx = await grantorSepolia.sendTransaction({ to: borrower.address, value: 5_000_000_000_000_000n });
   await fundSepoliaTx.wait();
-  const fundCCTx = await employerCC.sendTransaction({ to: borrower.address, value: parseEther("20") });
+  const fundCCTx = await grantorSepolia.connect(cc).sendTransaction({ to: borrower.address, value: 20_000_000_000_000_000_000n });
   await fundCCTx.wait();
 
-  // 1. Register the employer if this is the first run.
-  const alreadyVerified = await registry.isVerified(employerCC.address);
-  if (!alreadyVerified) {
-    console.log("[e2e] 1/10 registering employer in EmployerRegistry...");
-    const minStake = await registry.MIN_STAKE();
-    const tx = await registry.register({ value: minStake });
+  // 1. Whitelist NEBULA as collateral, if this is the first run.
+  const existingConfig = await pool.collateralConfig(nebulaAddress);
+  if (!existingConfig.enabled) {
+    console.log("[e2e] 1/11 whitelisting NEBULA as collateral in CreditPool...");
+    const tx = await (pool.connect(poolOwnerCC) as Contract).setCollateralToken(
+      nebulaAddress,
+      oracleAddress,
+      DEMO_BASE_LTV_BPS,
+      true,
+    );
     await tx.wait();
-    console.log(`[e2e]     staked ${formatUnits(minStake, 18)} tCTC, tx: ${tx.hash}`);
+    const oracle = new Contract(oracleAddress, PRICE_ORACLE_ABI, poolOwnerCC);
+    const setPriceTx = await oracle.setPrice(DEMO_PRICE_USD);
+    await setPriceTx.wait();
+    console.log(`[e2e]     whitelisted, tx: ${tx.hash}`);
   } else {
-    console.log("[e2e] 1/10 employer already registered, skipping");
+    console.log("[e2e] 1/11 NEBULA already whitelisted, skipping");
   }
 
-  // 2. Employer creates a salary stream on Sepolia.
-  console.log("[e2e] 2/10 employer creates salary stream on Sepolia...");
-  const stopTime = Math.floor(Date.now() / 1000) + STREAM_DURATION_SECONDS;
-  const createTx = await stream.createStream(borrowerSepolia.address, stopTime, { value: STREAM_DEPOSIT });
+  // 2. Grantor mints NEBULA and locks it in a real Sablier Lockup Linear stream, on Sepolia.
+  console.log("[e2e] 2/11 minting NEBULA and creating a Sablier stream...");
+  const mintTx = await nebula.mint(grantorSepolia.address, STREAM_DEPOSIT);
+  await mintTx.wait();
+  const approveTx = await nebula.approve(sablierLockupAddress, STREAM_DEPOSIT);
+  await approveTx.wait();
+
+  const createTx = await sablierLockup.createWithDurationsLL(
+    {
+      sender: grantorSepolia.address,
+      recipient: borrowerSepolia.address,
+      depositAmount: STREAM_DEPOSIT,
+      token: nebulaAddress,
+      cancelable: false, // required: StreamVerifierASC rejects any cancelable stream
+      transferable: false, // required: keeps the recipient a permanent identity for the loan
+      shape: "miro-demo-linear",
+    },
+    { start: 0n, cliff: 0n }, // no instant/cliff unlock, pure linear vesting
+    0, // granularity: continuous per-second vesting
+    { cliff: 0, total: STREAM_DURATION_SECONDS },
+  );
   const createReceipt = await createTx.wait();
-  const streamId = parseStreamId(stream, createReceipt);
+  const streamId = parseStreamId(sablierLockup, createReceipt);
   console.log(`[e2e]     tx: ${createTx.hash}, streamId: ${streamId}`);
 
-  // 3. Relay SalaryStreamCreated to StreamVerifierASC.
-  console.log("[e2e] 3/10 relaying SalaryStreamCreated...");
+  // 3. Relay CreateLockupLinearStream to the verifier.
+  console.log("[e2e] 3/11 relaying CreateLockupLinearStream...");
   await relayEvent(
     chainInfoProvider,
     builder,
@@ -111,18 +137,18 @@ async function main() {
     asc,
     createTx.hash,
     createReceipt.blockNumber,
-    "SalaryStreamCreated",
+    "CreateLockupLinearStream",
   );
-  const recordedStream = await asc.streamOf(borrowerCC.address);
-  console.log(`[e2e]     asc.streamOf(borrower).exists = ${recordedStream.exists}`);
+  const recordedToken: string = await asc.collateralToken(borrowerCC.address);
+  console.log(`[e2e]     asc.collateralToken(borrower) = ${recordedToken}`);
 
   // 4. Seed LP liquidity so the pool has tUSDC to lend, if it doesn't already.
-  console.log("[e2e] 4/10 seeding LP liquidity...");
-  await seedLP(usdc.connect(employerCC) as Contract, pool.connect(employerCC) as Contract, employerCC.address);
+  console.log("[e2e] 4/11 seeding LP liquidity...");
+  await seedLP(usdc.connect(poolOwnerCC) as Contract, pool.connect(poolOwnerCC) as Contract, poolOwnerCC.address);
 
   // 5. Borrower borrows against the stream.
   const limit: bigint = await pool.creditLimit(borrowerCC.address);
-  console.log(`[e2e] 5/10 credit limit: ${formatUnits(limit, 6)} tUSDC`);
+  console.log(`[e2e] 5/11 credit limit: ${formatUnits(limit, 6)} tUSDC`);
   if (limit > 0n) {
     const borrowAmount = limit / 2n;
     const tx = await pool.borrow(borrowAmount);
@@ -132,19 +158,19 @@ async function main() {
     console.log("[e2e]     credit limit is 0 (stream not vesting yet?), skipping borrow");
   }
 
-  // 6. Wait for some real vesting time, then withdraw salary on Sepolia.
-  console.log(`[e2e] 6/10 waiting ${VEST_WAIT_MS / 1000}s for salary to vest...`);
+  // 6. Wait for some real vesting time, then withdraw vested NEBULA on Sepolia.
+  console.log(`[e2e] 6/11 waiting ${VEST_WAIT_MS / 1000}s for NEBULA to vest...`);
   await sleep(VEST_WAIT_MS);
-  const vested: bigint = await stream.balanceOf(streamId);
-  console.log(`[e2e]     vested balance: ${formatUnits(vested, 18)} ETH`);
-  if (vested > 0n) {
-    const streamAsBorrower = stream.connect(borrowerSepolia) as Contract;
-    const wTx = await streamAsBorrower.withdraw(streamId, vested);
+  const withdrawable: bigint = await sablierLockup.withdrawableAmountOf(streamId);
+  console.log(`[e2e]     withdrawable balance: ${formatUnits(withdrawable, 18)} NEBULA`);
+  if (withdrawable > 0n) {
+    const sablierAsBorrower = sablierLockup.connect(borrowerSepolia) as Contract;
+    const wTx = await sablierAsBorrower.withdrawMax(streamId, borrowerSepolia.address);
     const wReceipt = await wTx.wait();
     console.log(`[e2e]     withdrew, tx: ${wTx.hash}`);
 
-    // 7. Relay SalaryStreamWithdrawn — this is what triggers garnishment.
-    console.log("[e2e] 7/10 relaying SalaryStreamWithdrawn...");
+    // 7. Relay WithdrawFromLockupStream -- this is what triggers garnishment.
+    console.log("[e2e] 7/11 relaying WithdrawFromLockupStream...");
     await relayEvent(
       chainInfoProvider,
       builder,
@@ -152,7 +178,7 @@ async function main() {
       asc,
       wTx.hash,
       wReceipt.blockNumber,
-      "SalaryStreamWithdrawn",
+      "WithdrawFromLockupStream",
     );
   } else {
     console.log("[e2e]     nothing vested yet, skipping withdraw + garnish steps");
@@ -160,7 +186,7 @@ async function main() {
 
   // 8. Confirm garnishment froze borrowing, then settle it.
   const pendingGarnish: bigint = await pool.pendingGarnish(borrowerCC.address);
-  console.log(`[e2e] 8/10 pendingGarnish: ${formatUnits(pendingGarnish, 6)} tUSDC`);
+  console.log(`[e2e] 8/11 pendingGarnish: ${formatUnits(pendingGarnish, 6)} tUSDC`);
   if (pendingGarnish > 0n) {
     try {
       await pool.borrow.staticCall(1n);
@@ -170,8 +196,8 @@ async function main() {
     }
 
     await ensureUsdcBalance(usdc, borrowerCC.address, pendingGarnish);
-    const approveTx = await usdc.approve(poolAddress, pendingGarnish);
-    await approveTx.wait();
+    const approveGarnishTx = await usdc.approve(poolAddress, pendingGarnish);
+    await approveGarnishTx.wait();
     const settleTx = await pool.settleGarnish(pendingGarnish);
     await settleTx.wait();
     console.log(`[e2e]     settled garnish, tx: ${settleTx.hash}`);
@@ -179,11 +205,11 @@ async function main() {
 
   // 9. Repay whatever debt remains in full, growing the borrower's credit tier.
   const debt: bigint = await pool.debt(borrowerCC.address);
-  console.log(`[e2e] 9/10 remaining debt: ${formatUnits(debt, 6)} tUSDC`);
+  console.log(`[e2e] 9/11 remaining debt: ${formatUnits(debt, 6)} tUSDC`);
   if (debt > 0n) {
     await ensureUsdcBalance(usdc, borrowerCC.address, debt);
-    const approveTx = await usdc.approve(poolAddress, debt);
-    await approveTx.wait();
+    const approveDebtTx = await usdc.approve(poolAddress, debt);
+    await approveDebtTx.wait();
     const repayTx = await pool.repay(debt);
     await repayTx.wait();
     console.log(`[e2e]     repaid in full, tx: ${repayTx.hash}`);
@@ -247,16 +273,19 @@ async function ensureUsdcBalance(usdc: Contract, holder: string, needed: bigint)
   }
 }
 
-function parseStreamId(stream: Contract, receipt: { logs: Array<{ topics: readonly string[]; data: string }> }): bigint {
+function parseStreamId(
+  sablierLockup: Contract,
+  receipt: { logs: Array<{ topics: readonly string[]; data: string }> },
+): bigint {
   for (const log of receipt.logs) {
     try {
-      const parsed = stream.interface.parseLog({ topics: log.topics as string[], data: log.data });
-      if (parsed?.name === "SalaryStreamCreated") return parsed.args.streamId as bigint;
+      const parsed = sablierLockup.interface.parseLog({ topics: log.topics as string[], data: log.data });
+      if (parsed?.name === "CreateLockupLinearStream") return parsed.args.streamId as bigint;
     } catch {
       // not one of our events, skip
     }
   }
-  throw new Error("SalaryStreamCreated log not found in create tx receipt");
+  throw new Error("CreateLockupLinearStream log not found in create tx receipt");
 }
 
 function sleep(ms: number): Promise<void> {

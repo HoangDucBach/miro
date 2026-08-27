@@ -1,29 +1,27 @@
-export interface SalaryStreamCreatedEvent {
+export interface StreamCreatedEvent {
   streamId: bigint;
-  sender: string; // employer
-  recipient: string; // borrower
-  deposit: bigint;
-  ratePerSecond: bigint;
+  borrower: string; // recipient / Sablier Lockup NFT holder
+  token: string; // vested ERC-20, whatever the grantor funded the stream with
+  depositAmount: bigint;
   startTime: bigint;
-  stopTime: bigint;
+  endTime: bigint;
+  cancelable: boolean;
+  transferable: boolean;
 }
 
-export interface SalaryStreamWithdrawnEvent {
+export interface StreamWithdrawnEvent {
   streamId: bigint;
-  recipient: string;
+  to: string; // withdrawal destination -- not necessarily the borrower identity itself
+  token: string;
   amount: bigint;
 }
 
-export interface SalaryStreamCancelledEvent {
-  streamId: bigint;
-  senderRefund: bigint;
-  recipientPayout: bigint;
-}
-
+// CancelLockupStream is intentionally not modeled here: only non-cancelable streams are
+// ever accepted as collateral (see StreamVerifierASC.sol), so a legitimate cancel can
+// never target a stream Miro is tracking.
 export type StreamEvent =
-  | { kind: "created"; data: SalaryStreamCreatedEvent }
-  | { kind: "withdrawn"; data: SalaryStreamWithdrawnEvent }
-  | { kind: "cancelled"; data: SalaryStreamCancelledEvent };
+  | { kind: "created"; data: StreamCreatedEvent }
+  | { kind: "withdrawn"; data: StreamWithdrawnEvent };
 
 // NOTE: chain info comes directly from @gluwa/usc-sdk's chainInfo.ChainInfo type
 // (apps/worker/src/lib/chain.ts) — not duplicated here, to avoid drifting from the real SDK shape.

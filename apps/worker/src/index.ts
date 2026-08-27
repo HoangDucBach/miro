@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Contract } from "ethers";
-import { SALARY_STREAM_ABI } from "@miro/shared";
+import { SABLIER_LOCKUP_ABI } from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
   ATTESTATION_TIMEOUT_MS,
@@ -16,16 +16,16 @@ import type { Job, RelayJobData } from "./lib/queue.js";
 import type { proofProvider, chainInfo } from "@gluwa/usc-sdk";
 
 /**
- * Entry point: listens for the three SalaryStream event types on Sepolia, pushes each
- * onto a BullMQ queue (Redis-backed, so restarts don't drop events and multiple worker
- * processes can share the same queue), and a concurrent Worker drives each job through
- * attest-wait -> proof -> submit.
+ * Entry point: listens for Sablier Lockup event types on Sepolia (a real, third-party
+ * contract, not ours), pushes each onto a BullMQ queue (Redis-backed, so restarts don't
+ * drop events and multiple worker processes can share the same queue), and a concurrent
+ * Worker drives each job through attest-wait -> proof -> submit.
  */
 async function main() {
   const source = sourceProvider();
   const cc = creditcoinProvider();
 
-  const streamAddress = requireEnv("STREAM_CONTRACT");
+  const sablierLockupAddress = requireEnv("SABLIER_LOCKUP_CONTRACT");
   const ascAddress = requireEnv("ASC_CONTRACT");
   const workerKey = requireEnv("WORKER_PRIVATE_KEY");
   const proverUrl = process.env.PROVER_URL ?? "https://prover.cc3-testnet.creditcoin.network";
@@ -48,9 +48,9 @@ async function main() {
     console.error(`[worker] job ${job?.id} (${job?.data.txHash}) failed`, err.message),
   );
 
-  const streamContract = new Contract(streamAddress, SALARY_STREAM_ABI, source);
+  const sablierLockup = new Contract(sablierLockupAddress, SABLIER_LOCKUP_ABI, source);
 
-  streamContract.on("*", async (event) => {
+  sablierLockup.on("*", async (event) => {
     const txHash: string | undefined = event?.log?.transactionHash;
     const blockNumber: number | undefined = event?.log?.blockNumber;
     if (!txHash || blockNumber === undefined) return;
@@ -60,7 +60,7 @@ async function main() {
   });
 
   console.log(
-    `[worker] listening on ${streamAddress}, chainKey=${sepolia.chainKey}, concurrency=${concurrency}`,
+    `[worker] listening on ${sablierLockupAddress}, chainKey=${sepolia.chainKey}, concurrency=${concurrency}`,
   );
 }
 

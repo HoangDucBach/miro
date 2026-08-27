@@ -4,7 +4,6 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {StreamVerifierASC} from "../src/StreamVerifierASC.sol";
-import {EmployerRegistry} from "../src/EmployerRegistry.sol";
 import {EvmV1Decoder} from "../src/libs/EvmV1Decoder.sol";
 import {INativeQueryVerifier} from "../src/libs/NativeQueryVerifier.sol";
 import {ICreditPool} from "../src/interfaces/ICreditPool.sol";
@@ -37,57 +36,42 @@ contract MockNativeQueryVerifier is INativeQueryVerifier {
 contract MockCreditPool is ICreditPool {
     struct WithdrawnCall {
         address borrower;
-        uint256 salary;
+        uint256 amount;
     }
 
     WithdrawnCall[] public withdrawnCalls;
-    address[] public cancelledCalls;
 
-    function onSalaryWithdrawn(address borrower, uint256 salary) external {
-        withdrawnCalls.push(WithdrawnCall(borrower, salary));
-    }
-
-    function onStreamCancelled(address borrower) external {
-        cancelledCalls.push(borrower);
+    function onTokenWithdrawn(address borrower, uint256 amount) external {
+        withdrawnCalls.push(WithdrawnCall(borrower, amount));
     }
 
     function withdrawnCallCount() external view returns (uint256) {
         return withdrawnCalls.length;
     }
-
-    function cancelledCallCount() external view returns (uint256) {
-        return cancelledCalls.length;
-    }
 }
 
 contract ASCTest is Test {
     StreamVerifierASC asc;
-    EmployerRegistry registry;
     MockCreditPool pool;
 
-    address owner = address(this);
     uint64 constant SEPOLIA_CHAIN_KEY = 1;
-    address streamContract = makeAddr("streamContract");
+    address sablierLockup = makeAddr("sablierLockup");
     address otherContract = makeAddr("otherContract");
-    address employer = makeAddr("employer");
     address borrower = makeAddr("borrower");
+    address demoToken = makeAddr("demoToken");
 
     address constant PRECOMPILE_ADDR = 0x0000000000000000000000000000000000000FD2;
 
-    bytes32 constant SIG_CREATED =
-        keccak256("SalaryStreamCreated(uint256,address,address,uint256,uint256,uint256,uint256)");
-    bytes32 constant SIG_WITHDRAWN = keccak256("SalaryStreamWithdrawn(uint256,address,uint256)");
-    bytes32 constant SIG_CANCELLED = keccak256("SalaryStreamCancelled(uint256,uint256,uint256)");
+    bytes32 constant SIG_CREATED = keccak256(
+        "CreateLockupLinearStream(uint256,(address,address,address,uint128,address,bool,bool,(uint40,uint40),string),uint40,uint40,(uint128,uint128))"
+    );
+    bytes32 constant SIG_WITHDRAWN = keccak256("WithdrawFromLockupStream(uint256,address,address,uint128)");
+    bytes32 constant SIG_CANCELLED = keccak256("CancelLockupStream(uint256,address,address,address,uint128,uint128)");
 
     function setUp() public {
-        registry = new EmployerRegistry();
         pool = new MockCreditPool();
-        asc = new StreamVerifierASC(address(registry), SEPOLIA_CHAIN_KEY, streamContract);
+        asc = new StreamVerifierASC(SEPOLIA_CHAIN_KEY, sablierLockup);
         asc.setPool(address(pool));
-
-        vm.deal(employer, 200 ether);
-        vm.prank(employer);
-        registry.register{value: 100 ether}();
 
         MockNativeQueryVerifier mockImpl = new MockNativeQueryVerifier();
         vm.etch(PRECOMPILE_ADDR, address(mockImpl).code);
@@ -99,12 +83,11 @@ contract ASCTest is Test {
 
     function test_constructor_wiring() public view {
         assertEq(asc.SOURCE_CHAIN_KEY(), SEPOLIA_CHAIN_KEY);
-        assertEq(asc.SOURCE_STREAM_CONTRACT(), streamContract);
-        assertEq(address(asc.registry()), address(registry));
+        assertEq(asc.SOURCE_SABLIER_LOCKUP(), sablierLockup);
     }
 
     function test_setPool_onlyOwner() public {
-        StreamVerifierASC fresh = new StreamVerifierASC(address(registry), SEPOLIA_CHAIN_KEY, streamContract);
+        StreamVerifierASC fresh = new StreamVerifierASC(SEPOLIA_CHAIN_KEY, sablierLockup);
         vm.prank(address(0xdead));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xdead)));
         fresh.setPool(address(0x1234));
@@ -131,41 +114,67 @@ contract ASCTest is Test {
         return EvmV1Decoder.LogEntryTuple({address_: emitter, topics: topics, data: data});
     }
 
-    function _createdLog(uint256 streamId, address employer_, address borrower_, uint256 deposit, uint256 rate)
+    /// @dev Mirrors Sablier's real CreateLockupLinearStream event: only streamId is
+    ///      indexed, everything else (commonParams, cliffTime, granularity, unlockAmounts)
+    ///      is ABI-encoded together as the event's non-indexed data.
+    function _createdLog(
+        uint256 streamId,
+        address recipient_,
+        address token_,
+        uint128 depositAmount,
+        uint40 startTime,
+        uint40 endTime,
+        bool cancelable_,
+        bool transferable_
+    ) internal view returns (EvmV1Decoder.LogEntryTuple memory) {
+        bytes32[] memory topics = new bytes32[](2);
+        topics[0] = SIG_CREATED;
+        topics[1] = bytes32(streamId);
+
+        StreamVerifierASC.SablierCreateEventCommon memory common = StreamVerifierASC.SablierCreateEventCommon({
+            funder: address(0xF1),
+            sender: address(0xF2),
+            recipient: recipient_,
+            depositAmount: depositAmount,
+            token: token_,
+            cancelable: cancelable_,
+            transferable: transferable_,
+            timestamps: StreamVerifierASC.SablierTimestamps({start: startTime, end: endTime}),
+            shape: "LINEAR"
+        });
+        StreamVerifierASC.SablierUnlockAmounts memory unlockAmounts =
+            StreamVerifierASC.SablierUnlockAmounts({start: 0, cliff: 0});
+
+        bytes memory data = abi.encode(common, uint40(0), uint40(0), unlockAmounts);
+        return _buildLog(sablierLockup, topics, data);
+    }
+
+    /// @dev Mirrors Sablier's real WithdrawFromLockupStream event: streamId, to and token
+    ///      are all indexed; only amount is non-indexed data.
+    function _withdrawnLog(uint256 streamId, address to_, address token_, uint128 amount)
         internal
         view
         returns (EvmV1Decoder.LogEntryTuple memory)
     {
         bytes32[] memory topics = new bytes32[](4);
-        topics[0] = SIG_CREATED;
-        topics[1] = bytes32(streamId);
-        topics[2] = bytes32(uint256(uint160(employer_)));
-        topics[3] = bytes32(uint256(uint160(borrower_)));
-        bytes memory data = abi.encode(deposit, rate, block.timestamp, block.timestamp + 180 days);
-        return _buildLog(streamContract, topics, data);
-    }
-
-    function _withdrawnLog(uint256 streamId, address borrower_, uint256 amount)
-        internal
-        view
-        returns (EvmV1Decoder.LogEntryTuple memory)
-    {
-        bytes32[] memory topics = new bytes32[](3);
         topics[0] = SIG_WITHDRAWN;
         topics[1] = bytes32(streamId);
-        topics[2] = bytes32(uint256(uint160(borrower_)));
-        return _buildLog(streamContract, topics, abi.encode(amount));
+        topics[2] = bytes32(uint256(uint160(to_)));
+        topics[3] = bytes32(uint256(uint160(token_)));
+        return _buildLog(sablierLockup, topics, abi.encode(amount));
     }
 
-    function _cancelledLog(uint256 streamId, uint256 senderRefund, uint256 recipientPayout)
+    function _cancelledLog(uint256 streamId, address sender_, address recipient_, address token_)
         internal
         view
         returns (EvmV1Decoder.LogEntryTuple memory)
     {
-        bytes32[] memory topics = new bytes32[](2);
+        bytes32[] memory topics = new bytes32[](4);
         topics[0] = SIG_CANCELLED;
-        topics[1] = bytes32(streamId);
-        return _buildLog(streamContract, topics, abi.encode(senderRefund, recipientPayout));
+        topics[1] = bytes32(uint256(uint160(sender_)));
+        topics[2] = bytes32(uint256(uint160(recipient_)));
+        topics[3] = bytes32(uint256(uint160(token_)));
+        return _buildLog(sablierLockup, topics, abi.encode(streamId, uint128(0), uint128(0)));
     }
 
     /// @dev Type-0 (legacy) encoding: chunks = [commonTx, LegacyFields, receipt].
@@ -219,48 +228,98 @@ contract ASCTest is Test {
         );
     }
 
+    function _defaultCreatedLog(uint256 streamId, address recipient_, uint128 depositAmount)
+        internal
+        view
+        returns (EvmV1Decoder.LogEntryTuple memory)
+    {
+        return _createdLog(
+            streamId,
+            recipient_,
+            demoToken,
+            depositAmount,
+            uint40(block.timestamp),
+            uint40(block.timestamp + 180 days),
+            false,
+            false
+        );
+    }
+
     // =================================================================
     // processStreamEvent happy paths
     // =================================================================
 
     function test_processStreamEvent_created_registersStream() public {
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
 
         assertTrue(_submit(tx_, keccak256("tx-created-1"), 100));
 
-        (address recEmployer, uint256 deposit,,,,, bool cancelled, bool exists) = asc.streamOf(borrower);
+        (address recBorrower, address token, uint128 depositAmount,,, bool exists) = asc.streamById(1);
         assertTrue(exists);
-        assertFalse(cancelled);
-        assertEq(recEmployer, employer);
-        assertEq(deposit, 6000e6);
+        assertEq(recBorrower, borrower);
+        assertEq(token, demoToken);
+        assertEq(depositAmount, 6000e18);
+        assertEq(asc.streamIdOf(borrower), 1);
     }
 
-    function test_processStreamEvent_created_revertsIfEmployerNotVerified() public {
-        address unverifiedEmployer = makeAddr("unverifiedEmployer");
-        bytes memory tx_ =
-            _buildEncodedTx(_singleLog(_createdLog(1, unverifiedEmployer, borrower, 6000e6, 1e6)), 1);
+    function test_processStreamEvent_created_revertsIfCancelable() public {
+        bytes memory tx_ = _buildEncodedTx(
+            _singleLog(
+                _createdLog(
+                    1, borrower, demoToken, 6000e18, uint40(block.timestamp), uint40(block.timestamp + 180 days), true, false
+                )
+            ),
+            1
+        );
 
-        vm.expectRevert("employer not verified");
-        _submit(tx_, keccak256("tx-unverified"), 100);
+        vm.expectRevert("stream is cancelable");
+        _submit(tx_, keccak256("tx-cancelable"), 100);
     }
 
-    function test_processStreamEvent_withdrawn_updatesRecordAndCallsPool() public {
-        bytes memory createTx = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+    function test_processStreamEvent_created_revertsIfTransferable() public {
+        bytes memory tx_ = _buildEncodedTx(
+            _singleLog(
+                _createdLog(
+                    1, borrower, demoToken, 6000e18, uint40(block.timestamp), uint40(block.timestamp + 180 days), false, true
+                )
+            ),
+            1
+        );
+
+        vm.expectRevert("stream is transferable");
+        _submit(tx_, keccak256("tx-transferable"), 100);
+    }
+
+    function test_processStreamEvent_withdrawn_callsPool() public {
+        bytes memory createTx = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
         _submit(createTx, keccak256("tx-created-2"), 100);
 
-        bytes memory withdrawTx = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, 1000e6)), 1);
+        bytes memory withdrawTx = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, demoToken, 1000e18)), 1);
         _submit(withdrawTx, keccak256("tx-withdrawn-1"), 101);
 
-        (,,,,, uint256 withdrawn,,) = asc.streamOf(borrower);
-        assertEq(withdrawn, 1000e6);
         assertEq(pool.withdrawnCallCount(), 1);
-        (address calledBorrower, uint256 calledSalary) = pool.withdrawnCalls(0);
+        (address calledBorrower, uint256 calledAmount) = pool.withdrawnCalls(0);
         assertEq(calledBorrower, borrower);
-        assertEq(calledSalary, 1000e6);
+        assertEq(calledAmount, 1000e18);
+    }
+
+    function test_processStreamEvent_withdrawn_routesByStreamIdNotWithdrawalDestination() public {
+        // `to` (the withdrawal destination) can differ from the borrower identity, which
+        // is looked up by streamId instead. Non-transferable streams guarantee the
+        // recipient recorded at creation never changes, so this routing stays correct.
+        address someOtherWallet = makeAddr("someOtherWallet");
+        bytes memory createTx = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
+        _submit(createTx, keccak256("tx-created-route"), 100);
+
+        bytes memory withdrawTx = _buildEncodedTx(_singleLog(_withdrawnLog(1, someOtherWallet, demoToken, 500e18)), 1);
+        _submit(withdrawTx, keccak256("tx-withdrawn-route"), 101);
+
+        (address calledBorrower,) = pool.withdrawnCalls(0);
+        assertEq(calledBorrower, borrower); // not someOtherWallet
     }
 
     function test_processStreamEvent_withdrawn_revertsForUnknownStream() public {
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, 1000e6)), 1);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, demoToken, 1000e18)), 1);
 
         vm.expectRevert("unknown stream");
         _submit(tx_, keccak256("tx-unknown"), 100);
@@ -270,16 +329,14 @@ contract ASCTest is Test {
         // Created and Withdrawn for the same borrower in one receipt. Created has to be
         // routed first so Withdrawn's rec.exists check passes in the same call.
         EvmV1Decoder.LogEntryTuple[] memory logs = new EvmV1Decoder.LogEntryTuple[](2);
-        logs[0] = _createdLog(1, employer, borrower, 6000e6, 1e6);
-        logs[1] = _withdrawnLog(1, borrower, 500e6);
+        logs[0] = _defaultCreatedLog(1, borrower, 6000e18);
+        logs[1] = _withdrawnLog(1, borrower, demoToken, 500e18);
         bytes memory tx_ = _buildEncodedTx(logs, 1);
 
         _submit(tx_, keccak256("tx-combo"), 100);
 
-        (,,,,, uint256 withdrawn, bool cancelled, bool exists) = asc.streamOf(borrower);
+        (,,,,, bool exists) = asc.streamById(1);
         assertTrue(exists);
-        assertFalse(cancelled);
-        assertEq(withdrawn, 500e6);
         assertEq(pool.withdrawnCallCount(), 1);
     }
 
@@ -288,7 +345,7 @@ contract ASCTest is Test {
     // =================================================================
 
     function test_processStreamEvent_wrongChain_reverts() public {
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
         INativeQueryVerifier.MerkleProof memory proof = _validMerkleProof(keccak256("tx-wrong-chain"));
 
         vm.expectRevert("wrong chain");
@@ -298,8 +355,8 @@ contract ASCTest is Test {
     }
 
     function test_processStreamEvent_poolNotSet_reverts() public {
-        StreamVerifierASC fresh = new StreamVerifierASC(address(registry), SEPOLIA_CHAIN_KEY, streamContract);
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+        StreamVerifierASC fresh = new StreamVerifierASC(SEPOLIA_CHAIN_KEY, sablierLockup);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
         INativeQueryVerifier.MerkleProof memory proof = _validMerkleProof(keccak256("tx-no-pool"));
 
         vm.expectRevert("pool not set");
@@ -309,7 +366,7 @@ contract ASCTest is Test {
     }
 
     function test_processStreamEvent_invalidProof_reverts() public {
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
         // INVALID_ROOT makes the mock revert. Read it before vm.expectRevert, which only
         // watches the very next call.
         bytes32 invalidRoot = MockNativeQueryVerifier(PRECOMPILE_ADDR).INVALID_ROOT();
@@ -319,7 +376,7 @@ contract ASCTest is Test {
     }
 
     function test_processStreamEvent_replayProtection_rejectsSecondSubmission() public {
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
         bytes32 root = keccak256("tx-replay");
 
         assertTrue(_submit(tx_, root, 100));
@@ -331,8 +388,8 @@ contract ASCTest is Test {
     function test_processStreamEvent_sameRootDifferentBlockHeight_isNotReplay() public {
         // txKey depends on chainKey, blockHeight and txIndex, so a different blockHeight
         // with the same proof root is a distinct event, not a replay.
-        bytes memory tx1 = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
-        bytes memory tx2 = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, 100e6)), 1);
+        bytes memory tx1 = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
+        bytes memory tx2 = _buildEncodedTx(_singleLog(_withdrawnLog(1, borrower, demoToken, 100e18)), 1);
         bytes32 root = keccak256("tx-shared-root");
 
         assertTrue(_submit(tx1, root, 100));
@@ -340,74 +397,89 @@ contract ASCTest is Test {
     }
 
     function test_processStreamEvent_failedSourceTx_reverts() public {
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 0);
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 0);
 
         vm.expectRevert("source tx failed");
         _submit(tx_, keccak256("tx-failed"), 100);
     }
 
     function test_processStreamEvent_badTxType_reverts() public {
-        bytes memory tx_ =
-            _buildEncodedTxWithType(5, _singleLog(_createdLog(1, employer, borrower, 6000e6, 1e6)), 1);
+        bytes memory tx_ = _buildEncodedTxWithType(5, _singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
 
         vm.expectRevert("bad tx type");
         _submit(tx_, keccak256("tx-badtype"), 100);
     }
 
     function test_processStreamEvent_ignoresLogsFromOtherEmitters() public {
-        bytes32[] memory topics = new bytes32[](4);
-        topics[0] = SIG_CREATED;
-        topics[1] = bytes32(uint256(1));
-        topics[2] = bytes32(uint256(uint160(employer)));
-        topics[3] = bytes32(uint256(uint160(borrower)));
-        bytes memory data = abi.encode(uint256(6000e6), uint256(1e6), block.timestamp, block.timestamp + 180 days);
-        EvmV1Decoder.LogEntryTuple memory foreignLog = _buildLog(otherContract, topics, data);
+        EvmV1Decoder.LogEntryTuple memory foreignLog = _defaultCreatedLog(1, borrower, 6000e18);
+        foreignLog.address_ = otherContract;
 
         bytes memory tx_ = _buildEncodedTx(_singleLog(foreignLog), 1);
         _submit(tx_, keccak256("tx-foreign"), 100);
 
-        (,,,,,,, bool exists) = asc.streamOf(borrower);
-        assertFalse(exists); // log from a non-SalaryStream contract must be ignored
+        (,,,,, bool exists) = asc.streamById(1);
+        assertFalse(exists); // log from a non-SablierLockup contract must be ignored
     }
 
     function test_processStreamEvent_ignoresUnrelatedEventSignatures() public {
         bytes32[] memory topics = new bytes32[](1);
         topics[0] = keccak256("SomeUnrelatedEvent(uint256)");
-        EvmV1Decoder.LogEntryTuple memory unrelatedLog = _buildLog(streamContract, topics, abi.encode(uint256(1)));
+        EvmV1Decoder.LogEntryTuple memory unrelatedLog = _buildLog(sablierLockup, topics, abi.encode(uint256(1)));
 
         bytes memory tx_ = _buildEncodedTx(_singleLog(unrelatedLog), 1);
         // Must not revert, unrecognized signatures are just skipped.
         assertTrue(_submit(tx_, keccak256("tx-unrelated"), 100));
     }
 
-    function test_processStreamEvent_cancelled_currentlyReverts_knownGap() public {
-        // SalaryStreamCancelled doesn't carry the recipient address yet, so this handler
-        // always reverts. See the TODO in _handleCancelled.
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_cancelledLog(1, 1000e6, 5000e6)), 1);
-
-        vm.expectRevert("cancel routing: TODO wire recipient lookup");
-        _submit(tx_, keccak256("tx-cancelled"), 100);
+    function test_processStreamEvent_cancelSignature_neverRoutedNotEvenAttempted() public {
+        // Unlike the salary-stream design, cancel routing isn't just unimplemented -- it's
+        // structurally unreachable, because only non-cancelable streams are ever accepted
+        // as collateral in the first place. A CancelLockupStream-signature log is simply
+        // skipped, same as any other unrecognized signature; it must not revert.
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_cancelledLog(1, address(0xF2), borrower, demoToken)), 1);
+        assertTrue(_submit(tx_, keccak256("tx-cancelled"), 100));
     }
 
     // =================================================================
-    // remainingLocked
+    // remainingLocked / collateralToken
     // =================================================================
 
     function test_remainingLocked_afterCreated_matchesUnvestedAmount() public {
-        uint256 deposit = 6000e6;
-        uint256 rate = 1e6; // 1 USDC/sec for a clean 6000-second stream in this test
-        bytes memory tx_ = _buildEncodedTx(_singleLog(_createdLog(1, employer, borrower, deposit, rate)), 1);
+        uint128 deposit = 6000e18;
+        uint40 start = uint40(block.timestamp);
+        uint40 end = uint40(block.timestamp + 6000);
+        bytes memory tx_ = _buildEncodedTx(
+            _singleLog(_createdLog(1, borrower, demoToken, deposit, start, end, false, false)), 1
+        );
         _submit(tx_, keccak256("tx-locked"), 100);
 
         assertEq(asc.remainingLocked(borrower), deposit); // nothing vested yet
 
         vm.warp(block.timestamp + 1000);
-        assertEq(asc.remainingLocked(borrower), deposit - rate * 1000);
+        assertEq(asc.remainingLocked(borrower), deposit - uint256(deposit) * 1000 / 6000);
     }
 
-    // remainingLocked's cancelled branch has no test here. The only way to set
-    // cancelled = true is _handleCancelled, which always reverts right now. Storage-slot
-    // manipulation would work but StreamRecord packs cancelled and exists into the same
-    // slot, so a hand-guessed slot index could silently corrupt exists too. Add this once
-    // cancel routing is fixed.
+    function test_remainingLocked_pastEndTime_returnsZero() public {
+        uint128 deposit = 6000e18;
+        uint40 start = uint40(block.timestamp);
+        uint40 end = uint40(block.timestamp + 6000);
+        bytes memory tx_ = _buildEncodedTx(
+            _singleLog(_createdLog(1, borrower, demoToken, deposit, start, end, false, false)), 1
+        );
+        _submit(tx_, keccak256("tx-fullyvested"), 100);
+
+        vm.warp(end + 1 days);
+        assertEq(asc.remainingLocked(borrower), 0);
+    }
+
+    function test_collateralToken_returnsStreamToken() public {
+        bytes memory tx_ = _buildEncodedTx(_singleLog(_defaultCreatedLog(1, borrower, 6000e18)), 1);
+        _submit(tx_, keccak256("tx-token"), 100);
+
+        assertEq(asc.collateralToken(borrower), demoToken);
+    }
+
+    function test_collateralToken_noStream_returnsZeroAddress() public view {
+        assertEq(asc.collateralToken(address(0x9999)), address(0));
+    }
 }

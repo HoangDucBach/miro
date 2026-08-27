@@ -4,13 +4,16 @@
  */
 export interface DeploymentAddresses {
   sepolia: {
-    salaryStream: string;
+    /** Sablier's real, unmodified SablierLockup deployment -- not ours. */
+    sablierLockup: string;
+    /** Demo collateral token, controllable price/supply for the demo. */
+    nebulaToken: string;
   };
   cc3Testnet: {
     streamVerifierASC: string;
     creditPool: string;
-    employerRegistry: string;
     testUSDC: string;
+    priceOracle: string;
   };
 }
 
@@ -23,13 +26,14 @@ export function loadAddressesFromEnv(env: Record<string, string | undefined> = p
 
   return {
     sepolia: {
-      salaryStream: required("STREAM_CONTRACT"),
+      sablierLockup: required("SABLIER_LOCKUP_CONTRACT"),
+      nebulaToken: required("NEBULA_TOKEN_CONTRACT"),
     },
     cc3Testnet: {
       streamVerifierASC: required("ASC_CONTRACT"),
       creditPool: required("CREDIT_POOL_CONTRACT"),
-      employerRegistry: required("EMPLOYER_REGISTRY_CONTRACT"),
       testUSDC: required("TEST_USDC_CONTRACT"),
+      priceOracle: required("PRICE_ORACLE_CONTRACT"),
     },
   };
 }
