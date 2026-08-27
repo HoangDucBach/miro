@@ -1,48 +1,45 @@
 # Demo Video Script (≤5 min)
 
 > Backing implementation: [apps/worker/src/e2e.ts](../apps/worker/src/e2e.ts).
-> Per §2.6: attestation wait is minutes-scale on testnet — **pre-record segments, do not
-> run this fully live.** Demo vesting stream duration: 15–30 min (see §2.6 rationale).
+> Attestation wait is minutes-scale on testnet — **pre-record segments, do not run this
+> fully live.**
 
 ## Segments
 
-1. **(0:00–0:30) Problem framing** — DeFi over-collateralization excludes people whose
-   asset is already-committed future value, not liquid capital. Show the one-liner:
-   borrow against your unvested token grant, no early sale needed.
-2. **(0:30–1:15) A real vesting stream, not a fake one** — mint the demo `NEBULA` token,
-   create a Lockup Linear stream on Sepolia via Sablier's real, unmodified
-   `SablierLockup` contract (`0xe61cb9153356419bdad0a8767c059f92d221a3c4`). Show the tx on
-   Sepolia Etherscan and the Lockup NFT appearing in the borrower's wallet — this is the
-   credibility beat: point out this is a live third-party protocol, not something we wrote.
-3. **(1:15–1:35) Safety check** — attempt to use a `cancelable` stream as collateral and
-   show it get rejected (`isCancelable() == true`); then show the real, non-cancelable
-   stream from segment 2 getting accepted. Establishes that Miro filters risk before
-   accepting collateral, not just after something goes wrong.
-4. **(1:35–2:20) Attestcoin relay (pre-recorded, sped up)** — worker log output: event
-   detected on `SablierLockup` → `waitUntilHeightAttested` → proof fetched →
-   `processStreamEvent` submitted. Cut to the `StreamEventProcessed` event on the CC3
-   explorer.
-5. **(2:20–3:00) Borrow** — show `CreditPool.creditLimit()` reflecting the vested-vs-locked
-   split priced through NEBULA's oracle, then `borrow()` succeeding within the LTV cap
-   (lower than a blue-chip-collateral cap, because NEBULA is a thin-liquidity demo token).
-6. **(3:00–3:45) Withdraw + garnish** — borrower calls `SablierLockup.withdraw()` on
-   Sepolia; after the relay, show `pendingGarnish` populated and a `borrow()` call
-   reverting with `"settle garnish first"`.
-7. **(3:45–4:20) Settle + LTV growth** — `settleGarnish()`, full `repay()`, then show
-   `repaidLoans` incrementing and the next `creditLimit()` reflecting the higher LTV tier.
-8. **(4:20–5:00) Trust model close** — one slide: what's cryptographically enforced
-   (receipt-status check, replay protection, on-chain proof verification, one-way
-   `renounce()` guarantee on the cancelable check) vs. what's an honest MVP limitation
-   (cross-chain enforcement gap, oracle risk on thin-liquidity collateral, the Lockup NFT
-   being transferable mid-loan with no escrow yet). Link to
+1. **(0:00–0:30) Problem framing** — a borrower's repayment history is real, but stuck
+   wherever it was earned. No lender on a different chain can see it without a bridge or a
+   centralized oracle. Miro attests it instead — cryptographically, once, portably.
+2. **(0:30–1:20) A real repayment on Aave, not a fake one** — faucet DAI on Aave V3's real
+   Sepolia Pool, supply, borrow, repay in full. Show the `Repay` tx on Sepolia Etherscan —
+   this is the credibility beat: Aave is a live third-party protocol, we wrote none of it.
+3. **(1:20–2:00) Attestcoin relay (pre-recorded, sped up)** — worker log output: `Repay`
+   event detected → `waitUntilHeightAttested` → proof fetched → `processAttestation`
+   submitted. Cut to `CreditPassport.scoreOf(borrower)` on the CC3 explorer ticking up from
+   0 to 10.
+4. **(2:00–2:50) A second, different protocol — Morpho** — supply collateral, borrow,
+   repay in full on a Morpho Blue market. Relay it the same way. Show `scoreOf` jump by
+   more than just the repay points: the **diversity bonus** for a second distinct source —
+   this is the beat that makes "cross-chain, not single-protocol" visible on screen.
+5. **(2:50–3:30) The score means something concrete** — show `PassportPool.maxLtvBps()`
+   for this borrower before vs. after: base 50%, boosted by score, capped at 75% — never
+   100%, always over-collateralized, stated on screen so it isn't overclaimed.
+6. **(3:30–4:20) Borrow, repay, and the loop closes** — deposit native tCTC as collateral,
+   borrow tUSDC at the boosted rate, repay in full. Show `scoreOf` tick up **again** — the
+   same pool that just read the score also fed it, a third distinct source.
+7. **(4:20–5:00) Trust model close** — one slide: what's cryptographically enforced
+   (receipt-status check, replay protection, per-source anti-dust floor, config-driven
+   decoding proven against two independently-verified event shapes) vs. what's an honest
+   MVP limitation (sybil/self-repay farming still costs only gas + interest; no KYC; only
+   Sepolia exists as a source chain on the public CC3 Testnet today, though nothing in the
+   contract hardcodes that). Link to
    [attestcoin-integration.md](./attestcoin-integration.md).
 
 ## TODO
 
-- [ ] Record each segment against real CC3 Testnet + Sepolia deployments, once the
-      migration in [technical-spec.md §2.9](./technical-spec.md#29-migration-to-the-token-vesting-design-post-day-16-pivot)
-      is done
-- [ ] Decide which demo token price path to show in segment 5/8 — a controlled admin-set
-      price (simple, matches the old `FixedPriceOracle` pattern) vs. a real feed pointed at
-      a low-liquidity pair (more honest about the oracle risk, harder to script precisely)
+- [ ] Record each segment against real Sepolia + CC3 Testnet deployments, once
+      [technical-spec.md §2.10](./technical-spec.md#210-migration-to-the-cross-chain-credit-passport-current-design)'s
+      remaining checklist items are done
+- [ ] Confirm Aave's Sepolia Faucet actually mints without friction for a fresh wallet —
+      first live run will tell; have a fallback ready if it's permissioned
+- [ ] Confirm the Morpho market bootstrap (LLTV/IRM enablement) live before recording
 - [ ] Decide on screen-capture tool and narration approach

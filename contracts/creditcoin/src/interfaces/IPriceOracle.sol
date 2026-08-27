@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 /// @notice Minimal price feed interface, shaped so a real feed (Chainlink's
-///         AggregatorV3Interface, wrapped) can be swapped in without touching CreditPool.
+///         AggregatorV3Interface, wrapped) can be swapped in without touching PassportPool.
 interface IPriceOracle {
     /// @notice Latest price, scaled by 10**decimals(). For an ETH/USD feed this is the
     ///         USD price of 1 ETH.

@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { Contract } from "ethers";
-import { SABLIER_LOCKUP_ABI } from "@miro/shared";
+import type { Contract, JsonRpcProvider } from "ethers";
+import { EVENT_TOPICS } from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
   ATTESTATION_TIMEOUT_MS,
@@ -10,23 +10,42 @@ import {
   sourceProvider,
 } from "./lib/chain.js";
 import { makeHostedProofBuilder } from "./lib/proof.js";
-import { ascContract, submitProof } from "./lib/submitter.js";
+import { passportContract, submitProof } from "./lib/submitter.js";
 import { createRedisConnection, createRelayQueue, createRelayWorker, enqueueRelayJob } from "./lib/queue.js";
 import type { Job, RelayJobData } from "./lib/queue.js";
+import type { Queue } from "bullmq";
 import type { proofProvider, chainInfo } from "@gluwa/usc-sdk";
 
+/** One (emitter, topic) pair to watch on Sepolia. Adding a new source protocol later is
+ *  just another entry here plus a matching CreditPassport.setSource(...) registration --
+ *  nothing about the listener code itself is specific to Aave or Morpho. */
+interface WatchTarget {
+  label: string;
+  address: string;
+  topic0: string;
+}
+
+export function watchTargetsFromEnv(): WatchTarget[] {
+  const targets: WatchTarget[] = [];
+  const aavePool = process.env.AAVE_POOL_CONTRACT;
+  if (aavePool) targets.push({ label: "Aave Repay", address: aavePool, topic0: EVENT_TOPICS.AaveRepay });
+  const morpho = process.env.MORPHO_CONTRACT;
+  if (morpho) targets.push({ label: "Morpho Repay", address: morpho, topic0: EVENT_TOPICS.MorphoRepay });
+  if (targets.length === 0) throw new Error("no watch targets configured: set AAVE_POOL_CONTRACT and/or MORPHO_CONTRACT");
+  return targets;
+}
+
 /**
- * Entry point: listens for Sablier Lockup event types on Sepolia (a real, third-party
- * contract, not ours), pushes each onto a BullMQ queue (Redis-backed, so restarts don't
- * drop events and multiple worker processes can share the same queue), and a concurrent
- * Worker drives each job through attest-wait -> proof -> submit.
+ * Entry point: listens for repayment events on each configured Sepolia lending protocol
+ * (real, third-party contracts, not ours), pushes each onto a BullMQ queue (Redis-backed,
+ * so restarts don't drop events and multiple worker processes can share the same queue),
+ * and a concurrent Worker drives each job through attest-wait -> proof -> submit.
  */
 async function main() {
   const source = sourceProvider();
   const cc = creditcoinProvider();
 
-  const sablierLockupAddress = requireEnv("SABLIER_LOCKUP_CONTRACT");
-  const ascAddress = requireEnv("ASC_CONTRACT");
+  const passportAddress = requireEnv("CREDIT_PASSPORT_CONTRACT");
   const workerKey = requireEnv("WORKER_PRIVATE_KEY");
   const proverUrl = process.env.PROVER_URL ?? "https://prover.cc3-testnet.creditcoin.network";
   const concurrency = Number(process.env.WORKER_CONCURRENCY ?? "5");
@@ -34,13 +53,13 @@ async function main() {
   const chainInfoProvider = makeChainInfoProvider(cc);
   const sepolia = await resolveSourceChainKey(chainInfoProvider);
   const builder = makeHostedProofBuilder(sepolia.chainKey, proverUrl);
-  const asc = ascContract(cc, ascAddress, workerKey);
+  const passport = passportContract(cc, passportAddress, workerKey);
 
   // BullMQ wants the Queue (producer) and Worker (consumer) on separate connections.
   const queue = createRelayQueue(createRedisConnection());
   const worker = createRelayWorker(
     createRedisConnection(),
-    (job) => processRelayJob(job, chainInfoProvider, builder, sepolia.chainKey, asc),
+    (job) => processRelayJob(job, chainInfoProvider, builder, sepolia.chainKey, passport),
     concurrency,
   );
   worker.on("completed", (job) => console.log(`[worker] job ${job.id} (${job.data.txHash}) completed`));
@@ -48,20 +67,25 @@ async function main() {
     console.error(`[worker] job ${job?.id} (${job?.data.txHash}) failed`, err.message),
   );
 
-  const sablierLockup = new Contract(sablierLockupAddress, SABLIER_LOCKUP_ABI, source);
+  const targets = watchTargetsFromEnv();
+  for (const target of targets) {
+    watchTarget(source, target, queue);
+  }
 
-  sablierLockup.on("*", async (event) => {
-    const txHash: string | undefined = event?.log?.transactionHash;
-    const blockNumber: number | undefined = event?.log?.blockNumber;
+  console.log(
+    `[worker] listening on ${targets.map((t) => `${t.label} (${t.address})`).join(", ")}, chainKey=${sepolia.chainKey}, concurrency=${concurrency}`,
+  );
+}
+
+function watchTarget(source: JsonRpcProvider, target: WatchTarget, queue: Queue<RelayJobData>): void {
+  source.on({ address: target.address, topics: [target.topic0] }, async (log) => {
+    const txHash: string | undefined = log?.transactionHash;
+    const blockNumber: number | undefined = log?.blockNumber;
     if (!txHash || blockNumber === undefined) return;
 
     await enqueueRelayJob(queue, { txHash, eventKind: "created", blockNumber });
-    console.log(`[worker] queued ${txHash} @ block ${blockNumber}`);
+    console.log(`[worker] queued ${target.label} ${txHash} @ block ${blockNumber}`);
   });
-
-  console.log(
-    `[worker] listening on ${sablierLockupAddress}, chainKey=${sepolia.chainKey}, concurrency=${concurrency}`,
-  );
 }
 
 /**
@@ -73,7 +97,7 @@ export async function processRelayJob(
   chainInfoProvider: chainInfo.ChainInfoProvider,
   builder: proofProvider.ProofProvider,
   chainKey: number,
-  asc: Awaited<ReturnType<typeof ascContract>>,
+  passport: Contract,
 ): Promise<void> {
   const { txHash, blockNumber } = job.data;
 
@@ -84,7 +108,7 @@ export async function processRelayJob(
   if (!r.success || !r.data) throw new Error(r.error ?? "proof unavailable");
   await job.updateProgress("proven");
 
-  const result = await submitProof(asc, r.data);
+  const result = await submitProof(passport, r.data);
   await job.updateProgress("submitted");
   console.log(`[worker] submitted ${txHash}: ${result}`);
 }

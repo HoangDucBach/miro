@@ -5,7 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /// @notice Owner-settable price feed standing in for a real oracle on testnet. Implements
-///         the same IPriceOracle interface a Chainlink adapter would, so CreditPool needs
+///         the same IPriceOracle interface a Chainlink adapter would, so PassportPool needs
 ///         no changes when this gets swapped out later. Not for production use: a single
 ///         owner-controlled price is a centralization point a real deployment must not have.
 contract FixedPriceOracle is IPriceOracle, Ownable {

@@ -3,21 +3,26 @@ pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {NebulaToken} from "../src/NebulaToken.sol";
+import {DemoToken} from "../src/DemoToken.sol";
 
-contract NebulaTokenTest is Test {
-    NebulaToken token;
+contract DemoTokenTest is Test {
+    DemoToken token;
     address owner = address(this);
     address alice = makeAddr("alice");
 
     function setUp() public {
-        token = new NebulaToken();
+        token = new DemoToken("Demo Loan", "DLOAN", 18);
     }
 
     function test_metadata() public view {
-        assertEq(token.name(), "Nebula");
-        assertEq(token.symbol(), "NEBULA");
+        assertEq(token.name(), "Demo Loan");
+        assertEq(token.symbol(), "DLOAN");
         assertEq(token.decimals(), 18);
+    }
+
+    function test_customDecimals() public {
+        DemoToken sixDecToken = new DemoToken("Demo Collateral", "DCOL", 6);
+        assertEq(sixDecToken.decimals(), 6);
     }
 
     function test_mint_byOwner_succeeds() public {

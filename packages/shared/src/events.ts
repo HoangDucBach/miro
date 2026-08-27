@@ -1,16 +1,21 @@
 import { id as keccakId } from "ethers";
 
-/** Human-readable event signatures — single source of truth for §2.3.1 / §2.3.2.
- *  These are Sablier's real event signatures (SablierLockup v4.0), not ours -- verified
- *  2026-08-26 against sablier-labs/sdk/abi/lockup/v4.0/SablierLockup.json. */
+/** Human-readable event signatures for the two Sepolia lending protocols the passport
+ *  proves repayments from. Neither is ours -- both are real, unmodified protocols.
+ *  Verified 2026-08-27: Aave against aave-dao/aave-v3-origin's IPool.sol, Morpho against
+ *  morpho-org/morpho-blue's EventsLib.sol. Indexed-ness doesn't change the canonical
+ *  signature string (only types matter for the topic0 hash), but it does change where
+ *  each field lives in topics vs. data -- see abis.ts's doc comments for that. */
 export const EVENT_SIGNATURES = {
-  CreateLockupLinearStream:
-    "CreateLockupLinearStream(uint256,(address,address,address,uint128,address,bool,bool,(uint40,uint40),string),uint40,uint40,(uint128,uint128))",
-  WithdrawFromLockupStream: "WithdrawFromLockupStream(uint256,address,address,uint128)",
+  AaveRepay: "Repay(address,address,address,uint256,bool)",
+  MorphoRepay: "Repay(bytes32,address,address,uint256,uint256)",
+  AaveLiquidationCall: "LiquidationCall(address,address,address,uint256,uint256,address,bool)",
 } as const;
 
-/** keccak256 topic0 hashes, computed from EVENT_SIGNATURES so ASC and worker never drift. */
+/** keccak256 topic0 hashes, computed from EVENT_SIGNATURES so CreditPassport source
+ *  registration and the worker's listener filters never drift apart. */
 export const EVENT_TOPICS = {
-  CreateLockupLinearStream: keccakId(EVENT_SIGNATURES.CreateLockupLinearStream),
-  WithdrawFromLockupStream: keccakId(EVENT_SIGNATURES.WithdrawFromLockupStream),
+  AaveRepay: keccakId(EVENT_SIGNATURES.AaveRepay),
+  MorphoRepay: keccakId(EVENT_SIGNATURES.MorphoRepay),
+  AaveLiquidationCall: keccakId(EVENT_SIGNATURES.AaveLiquidationCall),
 } as const;

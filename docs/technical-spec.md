@@ -13,84 +13,118 @@
 - **`chainKey`** is Creditcoin-internal (Sepolia = `1` on CC3 Testnet) — **not** the EVM chainId. Resolve at runtime via `PrecompileChainInfoProvider.getSupportedChains()`.
 - **Attestation wait**: `proofBuilder.waitUntilHeightAttested(chainKey, blockNumber)` — polls every 15s, 15m default timeout.
 - **Batch**: `getBatchProof([...])`, max **10 tx** sharing one continuity proof, within **1000 blocks**.
-- **⚠ Critical**: the precompile does **not** validate tx success. ASC **MUST** decode receipt and require `receiptStatus == 1` (`EvmV1Decoder.decodeReceiptFields`).
+- **⚠ Critical**: the precompile does **not** validate tx success. The passport contract **MUST** decode receipt and require `receiptStatus == 1` (`EvmV1Decoder.decodeReceiptFields`).
 - Decoding: `EvmV1Decoder` — `getTransactionType`, `decodeReceiptFields`, `getLogsByEventSignature`, `decodeCommonTxFields`. Reference impl: `gluwa/usc-testnet-bridge-examples` → `USCMinter.sol`, `hello-bridge`.
+- **Supported source chains on the public CC3 Testnet today**: only Sepolia (`chainKey 1`), verified 2026-08-27 against `gluwa/creditcoin-usc-networks/networks.json` (the real network config repo, not docs prose). A separate internal `usc-devnet` environment additionally lists `bsc-testnet`, but that's a different RPC/attestor set, not the public testnet this project targets. See §2.10 for why the contract design doesn't hardcode this limitation.
 
 ## 2.2 Architecture
 
 ```
-┌─ Ethereum Sepolia ─────────────────┐   ┌─ Creditcoin CC3 Testnet ───────────────────┐
-│  SablierLockup (real, NOT ours)    │   │  StreamVerifierASC.sol (renamed conceptually│
-│   0xe61cb9153356419bdad0a8767c...  │   │  to a Sablier-reading verifier)             │
-│   ├ createWithDurationsLL()        │events│  ├ processStreamEvent(proof...)          │
-│   ├ withdraw() / withdrawMax()     │──┐│   │   ├ replay check (txKey)                │
-│   ├ cancel() / renounce()          │  ││   │   ├ VERIFIER.verifyAndEmit() @0x0FD2    │
-│   └ isCancelable() / ownerOf()     │  ││   │   ├ receiptStatus == 1                  │
-└─────────────────────────────────────┘  ││   │   ├ decode event (EvmV1Decoder)        │
-        ┌─ Worker (Node/TS) ──────────▼┐ │   │   ├ reject if isCancelable == true      │
-        │ ethers v6 listeners           │ │   │   └ route → pool                       │
-        │ waitUntilHeightAttested       │ │   └ remainingLocked(user) view             │
-        │ ProofBuilder.getProof         │─►  CreditPool.sol                            │
-        │ submit tx → ASC               │ │   ├ deposit/withdraw (LP, tUSDC)           │
-        └────────────────────────────────┘ │   ├ borrow / repay                        │
-                                            │   ├ onTokenWithdrawn → garnish            │
-                                            │   ├ settleGarnish                        │
-                                            │   └ collateral token registry:           │
-                                            │       mapping(token => PriceOracle, LTV) │
-                                            │  TestUSDC.sol (mintable tUSDC)            │
-                                            └────────────────────────────────────────────┘
+Sepolia                                       Creditcoin CC3 Testnet
+┌──────────────────────────┐                  ┌─────────────────────────────────────┐
+│ Aave V3 Pool (real)      │  Repay events     │ CreditPassport.sol                   │
+│  0x6Ae43d327...           │──────┐           │  ├ processAttestation(proof...)      │
+│ Morpho Blue (real)        │      │           │  │  ├ replay check (txKey)           │
+│  0xd011ee229...           │      │           │  │  ├ verifyAndEmit() @0x0FD2        │
+└──────────────────────────┘      │           │  │  ├ receiptStatus == 1             │
+        ┌─ Worker (BullMQ) ───────▼─┐          │  │  └ route log → SourceConfig       │
+        │ watch N (address,topic0)   │─────────►  ├ setSource(...) onlyOwner          │
+        │ attest-wait → proof → submit│         │  ├ recordLocalRepay() onlyReporter  │
+        └────────────────────────────┘          │  └ scoreOf(borrower) view           │
+                                                 │ PassportPool.sol (reference lender) │
+                                                 │  ├ depositCollateral() native tCTC  │
+                                                 │  ├ borrow: LTV = 50% + f(score) ≤75%│
+                                                 │  ├ full repay → recordLocalRepay    │
+                                                 │  └ LP deposit/withdraw (tUSDC)      │
+                                                 │ TestUSDC.sol, FixedPriceOracle.sol  │
+                                                 └─────────────────────────────────────┘
 ```
 
-**What changed from the original salary-stream design**: the Ethereum-side contract is no longer ours — `SalaryStream.sol` and `EmployerRegistry.sol` are dropped entirely. The worker and ASC-equivalent verifier now read a real, unmodified third-party protocol's state (Sablier's `SablierLockup`). `CreditPool` gains a collateral-token registry (multiple ERC-20s, each with its own price oracle and LTV) instead of a single hardcoded ETH/`FixedPriceOracle` pair, because the vested asset can be any whitelisted token, not always ETH.
+Aave and Morpho are real, unmodified protocols Miro never deploys or controls. `CreditPassport` never hardcodes which chain or which protocol it reads from — every source is a `SourceConfig` entry the owner registers, so adding a third protocol (on Sepolia today, on any other chain the moment Creditcoin supports it as a source) is a config call, not a redeploy.
 
 ## 2.3 Contract specs
 
 See implementation:
-- [StreamVerifierASC.sol](../contracts/creditcoin/src/StreamVerifierASC.sol) — §2.3.1, reads Sablier's real events instead of a self-written stream contract's
-- [CreditPool.sol](../contracts/creditcoin/src/CreditPool.sol) — §2.3.2, now multi-token collateral
-- [TestUSDC.sol](../contracts/creditcoin/src/TestUSDC.sol) — §2.3.3, unchanged debt-token mock
+- [CreditPassport.sol](../contracts/creditcoin/src/CreditPassport.sol) — §2.3.1, the portable credit record
+- [PassportPool.sol](../contracts/creditcoin/src/PassportPool.sol) — §2.3.2, reference lender that both reads and feeds the passport
+- [TestUSDC.sol](../contracts/creditcoin/src/TestUSDC.sol), [FixedPriceOracle.sol](../contracts/creditcoin/src/FixedPriceOracle.sol) — unchanged debt-token mock and CTC/USD price feed
 
-**Real Sablier ABI facts** (`SablierLockup`, v4.0, verified 2026-08-26 against `sablier-labs/sdk/abi/lockup/v4.0/SablierLockup.json` — deployed after this project's original knowledge cutoff, so nothing here was assumed from memory):
-
-- One unified ERC-721 contract handles all vesting models (Linear/Dynamic/Tranched/PriceGated). Miro only cares about the Linear model.
-- Creation: `createWithDurationsLL(...)` / `createWithTimestampsLL(...)` → emits `CreateLockupLinearStream(uint256 streamId, tuple, uint40, uint40, tuple)`. **Exact struct field names still need confirming from the full ABI/docs before writing the decoder** — only parameter *types* were extracted so far, not field names.
-- Withdraw: `withdraw(streamId, to, amount)` → emits `WithdrawFromLockupStream(uint256, address, address, uint128)`.
-- Cancel: `cancel(streamId)` → emits `CancelLockupStream(uint256, address, address, address, uint128, uint128)`.
-- **`renounce(streamId)`**: makes a cancelable stream permanently non-cancelable. One-directional — a stream can never go from non-cancelable back to cancelable. This is why checking `isCancelable(streamId) == false` once, at borrow time, is a permanent guarantee and not just a point-in-time snapshot.
-- View functions Miro depends on: `isCancelable(streamId)`, `isCold(streamId)` (stream has ended, one way or another), `isDepleted`, `wasCanceled`, `ownerOf(streamId)` (current NFT holder — the actual borrower identity, which can change via ERC-721 transfer, see product-spec.md §1.6), `withdrawableAmountOf(streamId)`, `streamedAmountOf(streamId)`, `refundableAmountOf(streamId)`.
-
-**Sepolia deployment addresses** (Sablier Lockup v4.0, verified against the raw deployment broadcast in `sablier-labs/sdk`, not just docs prose):
-
-| Contract | Address |
-|---|---|
-| SablierLockup | `0xe61cb9153356419bdad0a8767c059f92d221a3c4` |
-| SablierBatchLockup | `0xd4ddc49f9d03a48293b5c8d89cc210af49d03d72` |
-| LockupHelpers | `0xc86b56250d2758f30d09b3420d9ec5b646244c7c` |
-| LockupMath | `0x6c873bce27aa6ca803ef7013f05d1802ab6995b6` |
-
-Key parameters (CreditPool, unchanged from the original design):
+### 2.3.1 CreditPassport — source registry and scoring
 
 ```solidity
-uint256 public constant BASE_LTV_BPS   = 5000;  // 50%, per collateral token this may be set lower
-uint256 public constant LTV_STEP_BPS   = 500;   // +5% per fully-repaid loan
-uint256 public constant MAX_LTV_BPS    = 7000;  // 70% cap
-uint256 public constant GARNISH_BPS    = 3000;  // 30% of each withdrawal
-uint256 public constant INTEREST_BPS   = 500;   // flat 5% per loan (MVP; no time accrual)
+enum BorrowerLoc { Topic1, Topic2, Topic3, DataWord }
+struct SourceConfig {
+    uint64 chainKey;      // never hardcoded -- any chain the precompile supports
+    address emitter;      // the lending protocol contract on that chain
+    bytes32 topic0;       // event signature hash
+    BorrowerLoc borrowerLoc;
+    uint8 borrowerDataWord;
+    uint8 amountDataWord;
+    uint256 minAmount;    // anti-dust floor, in the event's own asset units
+    bool negative;        // liquidation-style events subtract score
+    bool enabled;
+}
 ```
 
-New surface needed in CreditPool: a per-token config (`priceOracle`, `enabled`, optionally a per-token LTV override) instead of the single immutable `priceOracle`/`debtDecimals` pair from the salary-stream design — see product-spec.md §1.6 for why a single fixed-price ETH oracle no longer fits once collateral can be any whitelisted ERC-20.
+`sourceIdFor(chainKey, emitter, topic0)` derives a stable id; `processAttestation(...)` looks up the id per log and decodes borrower/amount from whichever topic or data word the config points at. This is what makes sources injectable: **any standard (non-anonymous) event can be described this way**, regardless of which fields happen to be indexed.
 
-**Vendored, not stubbed**: `contracts/creditcoin/src/libs/EvmV1Decoder.sol` and `NativeQueryVerifier.sol` remain vendored verbatim from the real reference implementation — `@gluwa/usc-contracts@0.1.2` and `gluwa/attestcoin-protocol-examples` — unaffected by this pivot, since the proof-verification layer doesn't care what the source-chain contract is.
+Scoring (`scoreOf`, all inputs O(1) at write time):
 
-**Retired from the original design**: `SalaryStream.sol`, `EmployerRegistry.sol`, and the old `_handleCancelled` TODO (it doesn't carry a recipient) are all dropped — Sablier's `CancelLockupStream` event already carries both `sender` and `recipient` as topics, so the routing problem that blocked cancellation-handling in the original design doesn't exist here.
+```solidity
+uint32 constant PER_SOURCE_CAP = 10;         // diminishing returns per source
+uint256 constant REPAY_POINTS = 10;
+uint256 constant DIVERSITY_POINTS = 20;      // per distinct source beyond the first
+uint256 constant AGE_PERIOD = 30 days;
+uint256 constant AGE_POINTS_PER_PERIOD = 5;  // capped at 6 periods (+30 total)
+uint256 constant NEGATIVE_PENALTY = 50;      // per negative-source event, floored at 0
+```
+
+`recordLocalRepay(borrower, amount)` lets a same-chain protocol (like `PassportPool`) report directly, no proof needed — gated by `localReporters[msg.sender]`, admin-registered. It's treated as its own distinct source (`localSourceIdFor(reporter)`) for diversity purposes.
+
+### 2.3.2 Real event shapes (verified 2026-08-27, not assumed from memory)
+
+Both events were verified directly against each protocol's own source, since **both have more indexed fields than a first-glance assumption would suggest** — getting this wrong would silently mis-attribute every repayment to the wrong address:
+
+| Protocol | Event | Borrower field | Verified against |
+|---|---|---|---|
+| Aave V3 | `Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)` | `user` — **topic 2** (all three addresses are indexed) | `aave-dao/aave-v3-origin`'s `IPool.sol` |
+| Morpho Blue | `Repay(Id indexed id, address indexed caller, address indexed onBehalf, uint256 assets, uint256 shares)` | `onBehalf` — **topic 3** (id, caller, AND onBehalf are all indexed) | `morpho-org/morpho-blue`'s `EventsLib.sol` |
+
+Both `amount`/`assets` land at **data word 0** in their respective events, since everything else is indexed. `CreditPassport.t.sol` builds both event shapes by hand to prove the generic decoder handles either layout correctly.
+
+### 2.3.3 Real Sepolia deployment addresses
+
+| Contract | Address | Source |
+|---|---|---|
+| Aave V3 Pool | `0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951` | `bgd-labs/aave-address-book` |
+| Aave V3 Faucet | `0xC959483DBa39aa9E78757139af0e9a2EDEb3f42D` | same |
+| Aave V3 DAI (reserve asset) | `0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357` | same |
+| Morpho Blue | `0xd011ee229e7459ba1ddd22631ef7bf528d424a14` | `morpho-org/morpho-blue-deployment` broadcast, chain `11155111` |
+| Morpho AdaptiveCurveIRM | `0x8c5ddcd3f601c91d1bf51c8ec26066010acaba7c` | same broadcast run — re-verify at deploy time, not hardcoded in contracts |
+
+### 2.3.4 PassportPool — reference lender
+
+```solidity
+uint256 public constant BASE_LTV_BPS = 5000;       // 50%, zero passport history
+uint256 public constant MAX_LTV_BPS = 7500;        // 75% cap -- always over-collateralized
+uint256 public constant SCORE_LTV_CAP = 250;        // score points that saturate the bonus
+uint256 public constant SCORE_BPS_PER_POINT = 10;   // +0.1% LTV per point, up to +25%
+uint256 public constant INTEREST_BPS = 500;         // flat 5% per loan
+uint256 public constant MIN_CREDIT_LOAN = 10e6;     // min cumulative principal before reporting
+```
+
+Collateral is native tCTC (`depositCollateral()`/`withdrawCollateral()`, health-checked). `maxLtvBps(borrower)` reads `passport.scoreOf(borrower)` live — no caching, no staleness. On a full repayment where accumulated principal since the last report crosses `MIN_CREDIT_LOAN`, the pool calls `passport.recordLocalRepay(...)` on itself as a registered local reporter — the same contract that just granted a better rate also feeds the signal that earns an even better one next time.
+
+**Vendored, not stubbed**: `contracts/creditcoin/src/libs/EvmV1Decoder.sol` and `NativeQueryVerifier.sol` remain vendored verbatim from the real reference implementation — `@gluwa/usc-contracts@0.1.2` and `gluwa/attestcoin-protocol-examples` — unaffected by any of this project's pivots, since the proof-verification layer doesn't care what the source-chain contract is.
 
 ## 2.4 Off-chain worker (TypeScript, ethers v6, latest SDK API)
 
 Implementation: [apps/worker/src](../apps/worker/src)
 
 ```typescript
-import { JsonRpcProvider, Wallet, Contract } from 'ethers';
-import { chainInfo, blockProver, proofProvider } from '@gluwa/usc-sdk';
+import { JsonRpcProvider, Contract } from 'ethers';
+import { chainInfo, proofProvider } from '@gluwa/usc-sdk';
+import { EVENT_TOPICS } from '@miro/shared';
 
 const source = new JsonRpcProvider(process.env.SEPOLIA_RPC);
 const cc     = new JsonRpcProvider('https://rpc.cc3-testnet.creditcoin.network');
@@ -103,21 +137,19 @@ const sepolia = chains.find(c => c.chainId === 11155111n)!; // → chainKey
 const builder = new proofProvider.service.ProofBuilder(
   sepolia.chainKey, 'https://prover.cc3-testnet.creditcoin.network');
 
-// 2. Listen to Sablier's real SablierLockup contract, not a contract we own.
-//    Relevant events: CreateLockupLinearStream / WithdrawFromLockupStream / CancelLockupStream.
-sablierLockup.on('*', async (ev) => queue.push(ev.log.transactionHash));
+// 2. Watch each registered source independently -- a real protocol we don't control,
+//    filtered to just its Repay event topic. Adding a third source later is another
+//    entry here plus a matching CreditPassport.setSource(...) call, nothing else changes.
+source.on({ address: AAVE_POOL, topics: [EVENT_TOPICS.AaveRepay] }, (log) => queue.push(log));
+source.on({ address: MORPHO, topics: [EVENT_TOPICS.MorphoRepay] }, (log) => queue.push(log));
 
-// 3. Pipeline per tx: attest-wait → proof → submit (with persistence + retry)
-async function process(txHash: string) {
-  const tx = await source.getTransaction(txHash);
-  await builder.waitUntilHeightAttested(sepolia.chainKey, tx!.blockNumber!); // poll 15s / timeout 15m
+// 3. Pipeline per tx: attest-wait → proof → submit (BullMQ handles retry/persistence)
+async function process(txHash: string, blockNumber: number) {
+  await builder.waitUntilHeightAttested(sepolia.chainKey, blockNumber); // poll 15s / timeout 15m
   const r = await builder.getProof(txHash);
   if (!r.success || !r.data) throw new Error(r.error);
   const p = r.data;
-  // On a CreateLockupLinearStream event specifically: fetch isCancelable(streamId) from
-  // sablierLockup directly (a plain read, not part of the proof) and skip submission
-  // entirely if it's true — a cancelable stream is never accepted as collateral.
-  await asc.processStreamEvent(
+  await passport.processAttestation(
     p.chainKey, p.headerNumber, p.txBytes,
     p.merkleProof.root, p.merkleProof.siblings,
     p.continuityProof.lowerEndpointDigest, p.continuityProof.roots);
@@ -126,9 +158,9 @@ async function process(txHash: string) {
 // Fallback: swap ProofBuilder → RawProofBuilder (same ProofProvider interface) if API is down.
 ```
 
-State: a tiny JSON/SQLite queue (`pending → attested → proven → submitted`) so restarts don't drop events; idempotent because ASC rejects replays anyway.
+State: BullMQ + Redis queue (`apps/worker/src/lib/queue.ts`), `jobId` = txHash for dedup, exponential backoff retry; idempotent regardless because the passport rejects replays anyway.
 
-**Verified against the real package** (`@gluwa/usc-sdk@0.18.0`, downloaded and inspected 2026-08-25 — not just this doc's description): `chainInfo.PrecompileChainInfoProvider.getSupportedChains()` / `.waitUntilHeightAttested()`, `proofProvider.service.ProofBuilder` (`getProof`, `getBatchProof`, `waitUntilHeightAttested`), and `proofProvider.raw.RawProofBuilder`. One correction to the spec's original description: `waitUntilHeightAttested` lives on `ChainInfoProvider`, not on every `ProofProvider` — `RawProofBuilder` (the offline fallback) does **not** implement it, only `getProof`/`getBatchProof`. [chain.ts](../apps/worker/src/chain.ts) exports a shared `ChainInfoProvider` instance for exactly this reason; [index.ts](../apps/worker/src/index.ts) calls `waitUntilHeightAttested` on that instance rather than on the proof builder, so the drain loop stays correct regardless of which builder is active. The reference examples repo (`gluwa/attestcoin-protocol-examples`) pins `@gluwa/usc-sdk@0.18.0`, `@gluwa/usc-contracts@0.1.2`, `ethers@^6.17.0` — this repo matches those pins.
+**Verified against the real package** (`@gluwa/usc-sdk@0.18.0`): `chainInfo.PrecompileChainInfoProvider.getSupportedChains()` / `.waitUntilHeightAttested()`, `proofProvider.service.ProofBuilder` (`getProof`, `getBatchProof`, `waitUntilHeightAttested`), and `proofProvider.raw.RawProofBuilder`. `waitUntilHeightAttested` lives on `ChainInfoProvider`, not on every `ProofProvider` — `RawProofBuilder` does **not** implement it, only `getProof`/`getBatchProof`. [chain.ts](../apps/worker/src/lib/chain.ts) exports a shared `ChainInfoProvider` instance for exactly this reason.
 
 ## 2.5 Config & env
 
@@ -138,44 +170,17 @@ See [.env.example](../.env.example) at repo root.
 
 | Layer | Tool | Coverage |
 |---|---|---|
-| Unit (contracts) | Foundry (`forge test`) | LTV/garnish accounting per collateral token, replay rejection, cancelable-stream rejection, mock-verifier ASC routing |
-| Decoder integration | Foundry fork/fixtures | feed real `txBytes` captured from a real Sepolia `SablierLockup` tx into `_routeLogs` |
-| E2E | ts script [apps/worker/src/e2e.ts](../apps/worker/src/e2e.ts) | mint demo NEBULA token → `SablierLockup.createWithDurationsLL` → attest → prove → CC verify → borrow → `SablierLockup.withdraw` → garnish → settle → LTV up |
-| Demo video (≤5 min) | screen capture | the E2E script + Sepolia explorer view of the real `SablierLockup` contract + CC3 explorer |
+| Unit (contracts) | Foundry (`forge test`) | source registry CRUD, config-driven decoding against both Aave- and Morpho-shaped logs, per-source cap, diversity/age scoring, negative events, replay rejection, PassportPool LTV/over-collateral invariants, local-report feedback loop |
+| E2E | ts script [apps/worker/src/e2e.ts](../apps/worker/src/e2e.ts) | real Aave faucet+supply+borrow+repay → attest → prove → CC verify → score check → real Morpho market bootstrap+borrow+repay → attest → verify → diversity check → PassportPool local borrow/repay loop → final score |
+| Demo video (≤5 min) | screen capture | the E2E script + Sepolia explorer view of both real protocols + CC3 explorer showing the score ticking up |
 
-**Known timing reality**: attestation wait is minutes-scale on testnet — pre-record segments; don't run the demo fully live. Vesting duration for the demo stream should be short (15–30 min), matched to the fact that the worker still needs real attestation+proof time (1–3 min) per relay round, so the two timelines don't visibly desync on camera.
+**Known timing reality**: attestation wait is minutes-scale on testnet — pre-record segments; don't run the demo fully live.
 
 ## 2.7 Monorepo structure
 
-See root [README.md](../README.md) for the up-to-date tree; original design target:
+See root [README.md](../README.md) for the up-to-date tree.
 
-```
-miro/
-├── package.json                 # pnpm workspaces + turborepo pipeline
-├── pnpm-workspace.yaml          # packages: apps/*, packages/*, contracts/*
-├── turbo.json                   # build/test/lint task graph
-├── .env.example
-├── README.md                    # quickstart + Attestcoin Integration Summary (submission!)
-│
-├── contracts/
-│   ├── source/                  # ── Sepolia (Foundry project)
-│   └── creditcoin/              # ── CC3 Testnet (Foundry project)
-│
-├── packages/
-│   ├── shared/                  # @miro/shared — ABIs, addresses.ts, event topics, types
-│   └── config/                  # shared tsconfig / eslint presets
-│
-├── apps/
-│   ├── worker/                  # @miro/worker — the Attestcoin relay
-│   └── web/                     # @miro/web — minimal Next.js/Vite dApp (deferred — infra first)
-│
-├── docs/
-└── .github/workflows/ci.yml
-```
-
-**Tooling choices (latest-standard):** pnpm workspaces + Turborepo (fast, zero-config caching) · Foundry for both contract packages (fast tests; two isolated projects because the two chains share no code) · TypeScript strict everywhere · `@miro/shared` is the single source of truth for ABIs/addresses so worker & web never drift · CI runs `forge test` + typecheck. Solidity `^0.8.23` to match the reference ASC examples.
-
-## 2.8 19-day plan (2 devs)
+## 2.8 19-day plan (2 devs) — original salary-stream design, historical
 
 | Days | Dev A (Solidity) | Dev B (TS/infra) |
 |---|---|---|
@@ -187,18 +192,25 @@ miro/
 | 17–18 | `attestcoin-integration.md`, README, deck | Record & edit demo video |
 | 19 | **Submit (1 day before the Sep 13 deadline)** | Buffer |
 
-> Ordering rationale: the SDK spike on day 1–2 is the highest-risk unknown (attestation latency, proof format) — prove it before writing a line of pool logic.
+> Ordering rationale: the SDK spike on day 1–2 is the highest-risk unknown (attestation latency, proof format) — prove it before writing a line of pool logic. Superseded by two later pivots (§2.9, §2.10); kept here as a historical record of the original plan.
 
-## 2.9 Migration to the token-vesting design (post day-16 pivot)
+## 2.9 Migration to the token-vesting design — historical, itself superseded by §2.10
 
-The 19-day plan above describes the original salary-stream design; the project reached "deployed + worker complete + Dockerized" against that design before pivoting to token vesting for a stronger match with Attestcoin/Creditcoin's actual thesis (see product-spec.md §1.1–§1.3). Remaining work under the new design:
+The project pivoted once from the original salary-stream design to token-vesting collateral (Sablier), reasoning it was a stronger match for Attestcoin's actual thesis. That design was fully built and tested (114 Foundry tests, 25 worker tests) but never redeployed before a second, sharper realization: vesting-collateral still requires full collateralization, just from more asset types — it doesn't touch the real problem (DeFi requiring over-collateralization at all). See §2.10 for the design that replaced it, and product-spec.md §1.1–§1.3 for the reasoning.
 
-- [x] Drop `contracts/source/src/SalaryStream.sol`; replaced with `NebulaToken.sol`, a mintable demo ERC-20 for a controllable demo price/supply.
-- [x] Drop `EmployerRegistry.sol`; no registry/staking actor exists in the new design.
-- [x] Rewrite `StreamVerifierASC.sol`'s event decoding to match `CreateLockupLinearStream` / `WithdrawFromLockupStream` (field names confirmed from the full ABI, see §2.3). `CancelLockupStream` is intentionally never routed — structurally unreachable now that only non-cancelable streams are accepted.
-- [x] Add a collateral-token registry to `CreditPool.sol`: `mapping(address => CollateralConfig)` holding `priceOracle`, `tokenDecimals`, `baseLtvBps`, `enabled`, replacing the single immutable ETH/`FixedPriceOracle` pair. Admin-only `setCollateralToken(...)`.
-- [x] Enforce `!cancelable && !transferable` as a hard on-chain requirement in `StreamVerifierASC._handleCreated` (decoded directly from the event's own data, reverts the whole `processStreamEvent` call if violated) — not just a worker-side pre-filter.
-- [x] Rewrite `apps/worker/src/e2e.ts` end to end against `SablierLockup` on Sepolia instead of `SalaryStream.sol`; also rewrote `packages/shared` ABIs/types/addresses and `apps/worker/src/index.ts`'s listener target.
-- [x] 114/114 Foundry tests passing (5 `contracts/source`, 109 `contracts/creditcoin`), 25/25 worker tests passing, after the full rewrite.
-- [ ] Redeploy `CreditPool` + verifier to CC3 Testnet; update `.env` and `docs/attestcoin-integration.md` with the real addresses (currently still shows the prior design's deployment, explicitly marked stale).
-- [ ] `apps/web` remains deferred, unaffected by this pivot either way.
+## 2.10 Migration to the cross-chain credit passport (current design)
+
+The idea that survives *only* because of Creditcoin/Attestcoin — not just "better with it" — is aggregating trustless proof of repayment behavior from multiple unrelated chains/protocols into one portable score, usable by a lender native to none of them. Collateral-based designs (salary-stream, vesting) are strictly reproducible without Creditcoin (same-chain composability beats cross-chain for pure collateral checks); a shared, oracle-free, cross-protocol reputation record is not. See product-spec.md §1.1–§1.3.
+
+Completed:
+
+- [x] Dropped `StreamVerifierASC.sol`, `CreditPool.sol`, `SalaryStream.sol`/`NebulaToken.sol`, and their interfaces/tests entirely.
+- [x] `CreditPassport.sol`: config-driven `SourceConfig` registry (§2.3.1), replay protection, receipt-status check — the proof-verification skeleton carried over unchanged from the prior design's `StreamVerifierASC`.
+- [x] `PassportPool.sol`: native-tCTC collateral, passport-modulated LTV capped at 75%, local-reporter feedback loop (§2.3.4).
+- [x] `contracts/source`: `DemoToken.sol` + `FixedMorphoOracle.sol` to bootstrap a demo Morpho market (Aave needs no deploys — it uses Aave's own real testnet reserves).
+- [x] Two real lending protocols verified and wired: Aave V3 and Morpho Blue on Sepolia, both event shapes verified directly against upstream source (§2.3.2) rather than assumed.
+- [x] `packages/shared`, `apps/worker/src/index.ts` (multi-source watch list), `submitter.ts` (`passportContract`/`processAttestation`), and `e2e.ts` rewritten end to end.
+- [x] 126 tests passing: 86 `contracts/creditcoin`, 12 `contracts/source`, 28 `apps/worker` (vitest).
+- [ ] Redeploy to CC3 Testnet + Sepolia (demo assets), update `.env` and `docs/attestcoin-integration.md`.
+- [ ] Live `e2e.ts` run against real infra — Aave faucet behavior, Morpho market bootstrap (`isLltvEnabled`/`isIrmEnabled`), and the two attestation round-trips are unverified against live testnet until this runs.
+- [ ] `apps/web` remains deferred, unaffected by this pivot.

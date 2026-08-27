@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { chainInfo, proofProvider } from "@gluwa/usc-sdk";
 import type { Job, RelayJobData } from "./lib/queue.js";
 import { ATTESTATION_POLL_MS, ATTESTATION_TIMEOUT_MS } from "./lib/chain.js";
 
 const submitProofMock = vi.fn();
 vi.mock("./lib/submitter.js", () => ({
-  ascContract: vi.fn(),
+  passportContract: vi.fn(),
   submitProof: submitProofMock,
 }));
 
-const { processRelayJob } = await import("./index.js");
+const { processRelayJob, watchTargetsFromEnv } = await import("./index.js");
 
 function fakeJob(data: RelayJobData, updateProgress = vi.fn()): Job<RelayJobData> {
   return { data, updateProgress } as unknown as Job<RelayJobData>;
@@ -30,13 +30,13 @@ describe("processRelayJob", () => {
     const getProof = vi.fn().mockResolvedValue({ success: true, data: proofData });
     const builder = { getProof } as unknown as proofProvider.ProofProvider;
     submitProofMock.mockResolvedValue("0xreceipt");
-    const asc = { fake: "asc" };
+    const passport = { fake: "passport" };
 
-    await processRelayJob(job, chainInfoProvider, builder, 1, asc as never);
+    await processRelayJob(job, chainInfoProvider, builder, 1, passport as never);
 
     expect(waitUntilHeightAttested).toHaveBeenCalledWith(1, 100, ATTESTATION_POLL_MS, ATTESTATION_TIMEOUT_MS);
     expect(getProof).toHaveBeenCalledWith("0xabc");
-    expect(submitProofMock).toHaveBeenCalledWith(asc, proofData);
+    expect(submitProofMock).toHaveBeenCalledWith(passport, proofData);
     expect(updateProgress.mock.calls.map((c) => c[0])).toEqual(["attested", "proven", "submitted"]);
   });
 
@@ -77,5 +77,42 @@ describe("processRelayJob", () => {
     submitProofMock.mockRejectedValue(new Error("rpc down"));
 
     await expect(processRelayJob(job, chainInfoProvider, builder, 1, {} as never)).rejects.toThrow("rpc down");
+  });
+});
+
+describe("watchTargetsFromEnv", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    delete process.env.AAVE_POOL_CONTRACT;
+    delete process.env.MORPHO_CONTRACT;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("builds a target per configured source, in a stable order", () => {
+    process.env.AAVE_POOL_CONTRACT = "0xaave";
+    process.env.MORPHO_CONTRACT = "0xmorpho";
+
+    const targets = watchTargetsFromEnv();
+
+    expect(targets).toHaveLength(2);
+    expect(targets[0]).toMatchObject({ label: "Aave Repay", address: "0xaave" });
+    expect(targets[1]).toMatchObject({ label: "Morpho Repay", address: "0xmorpho" });
+  });
+
+  it("supports a single configured source", () => {
+    process.env.AAVE_POOL_CONTRACT = "0xaave";
+
+    const targets = watchTargetsFromEnv();
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({ label: "Aave Repay", address: "0xaave" });
+  });
+
+  it("throws when no source is configured, since the worker would otherwise listen for nothing", () => {
+    expect(() => watchTargetsFromEnv()).toThrow(/no watch targets configured/);
   });
 });

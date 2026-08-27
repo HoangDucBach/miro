@@ -1,10 +1,12 @@
 # Miro
 
-Borrow against your unvested token grant. Vesting positions already exist on
-[Sablier](https://sablier.com) — a real, live protocol on Ethereum, not something we wrote;
-the [Attestcoin Protocol](https://creditcoin.org) cryptographically proves the remaining
-locked value of that position on Creditcoin; the holder receives a bank-style credit
-line — no need to sell tokens early to get cash.
+A cross-chain credit passport. Real repayments on real lending protocols — Aave V3 and
+Morpho Blue on Ethereum Sepolia, in this build — get attested onto Creditcoin via the
+[Attestcoin Protocol](https://creditcoin.org): no bridge, no oracle operator, just a
+cryptographic proof of what actually happened. The result is one portable score any
+lender can read. Our own reference pool reads it to grant a better rate, and reports back
+into the same passport it reads from — credit built anywhere is usable there, and credit
+built there is usable anywhere else that reads it.
 
 > **BUIDL CTC 2026 Fall — DeFi Track.** Full spec: [docs/product-spec.md](docs/product-spec.md)
 > · [docs/technical-spec.md](docs/technical-spec.md) · required deep-dive:
@@ -12,14 +14,15 @@ line — no need to sell tokens early to get cash.
 
 ## Status
 
-Pivoted from an earlier salary-stream design to token-vesting collateral (see
-[technical-spec.md §2.9](docs/technical-spec.md#29-migration-to-the-token-vesting-design-post-day-16-pivot)
-for why). Contracts and worker are rewritten and fully tested locally against the new
-design (114/114 Foundry tests, 25/25 worker tests); **not yet redeployed** to Sepolia/CC3
-Testnet under this design — the addresses in
+Second pivot: from collateral-based designs (salary streams, then token vesting) to a
+cross-chain credit passport — the one idea that genuinely can't be reproduced without
+Creditcoin (see
+[technical-spec.md §2.10](docs/technical-spec.md#210-migration-to-the-cross-chain-credit-passport-current-design)).
+Contracts and worker are rewritten and fully tested locally (126 tests total: 86
+`contracts/creditcoin`, 12 `contracts/source`, 28 `apps/worker`); **not yet redeployed** —
+the addresses in
 [docs/attestcoin-integration.md](docs/attestcoin-integration.md#deployed-addresses) are
-still from the prior salary-stream deployment and need refreshing. `apps/web` is still
-deferred.
+from a prior design and need refreshing. `apps/web` is still deferred.
 
 - [`contracts/creditcoin/src/libs/`](contracts/creditcoin/src/libs/) — `EvmV1Decoder.sol` and
   `NativeQueryVerifier.sol` are vendored verbatim from the real reference implementation
@@ -27,14 +30,12 @@ deferred.
   versions that repo's own `package.json` uses, with attribution headers. Not stubs.
 - [`apps/worker/src/lib/chain.ts`](apps/worker/src/lib/chain.ts) /
   [`proof.ts`](apps/worker/src/lib/proof.ts) — written against and typechecked against the
-  real installed `@gluwa/usc-sdk@0.18.0` package, not just the spec's description of it.
-  The full proof pipeline (chainKey resolution, fetching a real proof, on-chain
-  verification, decoding real tx bytes) was run end to end against the live network
-  before any of our own contracts were deployed.
-- `StreamVerifierASC.sol` now decodes Sablier's real `CreateLockupLinearStream` /
-  `WithdrawFromLockupStream` events (field names verified against
-  `sablier-labs/sdk/abi/lockup/v4.0/SablierLockup.json`), and only accepts streams that
-  are provably `!cancelable && !transferable` — see product-spec.md §1.6.
+  real installed `@gluwa/usc-sdk@0.18.0` package. The full proof pipeline was run end to
+  end against the live network before any of our own contracts were deployed.
+- `CreditPassport.sol` decodes real `Repay` events from Aave V3 and Morpho Blue on Sepolia
+  through one config-driven mechanism (`SourceConfig`) — both events turned out to have
+  more indexed fields than a first glance would suggest, verified directly against each
+  protocol's own source, not assumed. See product-spec.md §1.6 for the trust model.
 - `forge script` doesn't work against CC3 Testnet (Foundry's local simulation panics on
   a missing `prevrandao` header field this chain doesn't set). Deploying there needs
   `forge create` per contract instead, see the deployment note linked above.
@@ -44,8 +45,8 @@ deferred.
 ```
 miro/
 ├── contracts/
-│   ├── source/       # Foundry project — NebulaToken.sol, the demo collateral token (Ethereum Sepolia)
-│   └── creditcoin/   # Foundry project — StreamVerifierASC, CreditPool, TestUSDC, FixedPriceOracle (CC3 Testnet)
+│   ├── source/       # Foundry project — DemoToken.sol + FixedMorphoOracle.sol, bootstrap a demo Morpho market (Ethereum Sepolia)
+│   └── creditcoin/   # Foundry project — CreditPassport, PassportPool, TestUSDC, FixedPriceOracle (CC3 Testnet)
 ├── packages/
 │   ├── shared/        # @miro/shared — ABIs, addresses, event topics, types
 │   └── config/        # shared tsconfig / eslint presets
@@ -55,8 +56,9 @@ miro/
 └── docs/                # product spec, technical spec, integration writeup, demo script
 ```
 
-Note: the vesting stream itself lives on Sablier's real `SablierLockup` contract, not in
-this repo — `contracts/source` only holds the demo collateral token.
+Note: Aave V3 and Morpho Blue themselves are real, unmodified protocols, not part of this
+repo — `contracts/source` only holds the demo assets needed to bootstrap a fresh Morpho
+market (Aave needs no deploys at all, it uses Aave's own real testnet reserves).
 
 ## Setup
 
@@ -82,40 +84,36 @@ forge test --root contracts/creditcoin
 cp .env.example .env   # fill in RPC URLs, private keys, deployed addresses
 ```
 
-Both projects build and their full test suites pass: 5/5 on `contracts/source`, 109/109 on
-`contracts/creditcoin` (114/114 total).
+Both projects build and their full test suites pass: 12/12 on `contracts/source`, 86/86 on
+`contracts/creditcoin` (98/98 total; plus 28/28 on `apps/worker`).
 
 ## Deploying
 
 ```bash
-# 1. Sepolia — deploys the demo NebulaToken. The vesting stream itself is created directly
-#    against Sablier's real, already-deployed SablierLockup contract, not deployed by us.
+# 1. Sepolia — deploys the demo Morpho market assets (loan token, collateral token,
+#    oracle). Aave needs no deploy at all: it uses Aave's own real Sepolia Pool + Faucet.
 forge script contracts/source/script/Deploy.s.sol \
   --rpc-url sepolia --private-key $DEPLOYER_PRIVATE_KEY --broadcast
 
-# 2. Resolve Sepolia's Creditcoin-internal chainKey (NOT the EVM chainId — §2.1), and look
-#    up Sablier's real SablierLockup address on Sepolia (see attestcoin-integration.md).
-#    Set SABLIER_LOCKUP_CONTRACT + SOURCE_CHAIN_KEY before the next step.
-
-# 3. CC3 Testnet — deploys TestUSDC, FixedPriceOracle, StreamVerifierASC, CreditPool
+# 2. CC3 Testnet — deploys TestUSDC, FixedPriceOracle, CreditPassport, PassportPool
 forge script contracts/creditcoin/script/Deploy.s.sol \
   --rpc-url cc3_testnet --private-key $CC3_DEPLOYER_PRIVATE_KEY --broadcast
 
-# 4. Whitelist NebulaToken as CreditPool collateral (apps/worker/src/e2e.ts does this
-#    automatically on first run if it isn't whitelisted yet).
+# 3. Register sources (Aave Repay, Morpho Repay) and the local reporter (PassportPool) on
+#    the passport -- config, not a redeploy. apps/worker/src/e2e.ts does this
+#    automatically on first run if they aren't registered yet.
 ```
 
 `forge script` works fine on Sepolia, but panics against CC3 Testnet (Foundry's local
 simulation needs a `prevrandao` header field this chain doesn't set). Use `forge create`
-per contract instead for step 3 — see
+per contract instead for step 2 — see
 [docs/attestcoin-integration.md](docs/attestcoin-integration.md#deployed-addresses) for
-the exact commands (addresses there are from the prior salary-stream deployment and need
-refreshing for this design).
+the exact commands and real Aave/Morpho Sepolia addresses.
 
 ## Running the worker
 
 ```bash
-pnpm worker        # listens for Sablier Lockup events, relays proofs to StreamVerifierASC
+pnpm worker        # watches Aave + Morpho Repay events, relays proofs to CreditPassport
 pnpm worker:e2e     # scripted demo flow — see docs/demo-script.md
 ```
 

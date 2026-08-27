@@ -4,53 +4,46 @@
  * with the generated artifacts from out/*.json so ABIs never drift from source (§2.7).
  */
 
-/**
- * Sablier's real, unmodified SablierLockup contract (v4.0), deployed on Sepolia by
- * Sablier Labs -- not something Miro deploys or controls. Only the Lockup Linear surface
- * Miro actually reads/calls is included here; field names verified 2026-08-26 against
- * sablier-labs/sdk/abi/lockup/v4.0/SablierLockup.json (see docs/attestcoin-integration.md
- * for the deployed address).
- */
-export const SABLIER_LOCKUP_ABI = [
-  "function createWithDurationsLL(tuple(address sender, address recipient, uint128 depositAmount, address token, bool cancelable, bool transferable, string shape) params, tuple(uint128 start, uint128 cliff) unlockAmounts, uint40 granularity, tuple(uint40 cliff, uint40 total) durations) payable returns (uint256 streamId)",
-  "function withdraw(uint256 streamId, address to, uint128 amount) external",
-  "function withdrawMax(uint256 streamId, address to) external returns (uint128 withdrawnAmount)",
-  "function isCancelable(uint256 streamId) external view returns (bool)",
-  "function isTransferable(uint256 streamId) external view returns (bool)",
-  "function ownerOf(uint256 streamId) external view returns (address)",
-  "function withdrawableAmountOf(uint256 streamId) external view returns (uint128)",
-  "function streamedAmountOf(uint256 streamId) external view returns (uint128)",
-  "event CreateLockupLinearStream(uint256 indexed streamId, tuple(address funder, address sender, address recipient, uint128 depositAmount, address token, bool cancelable, bool transferable, tuple(uint40 start, uint40 end) timestamps, string shape) commonParams, uint40 cliffTime, uint40 granularity, tuple(uint128 start, uint128 cliff) unlockAmounts)",
-  "event WithdrawFromLockupStream(uint256 indexed streamId, address indexed to, address indexed token, uint128 amount)",
+export const CREDIT_PASSPORT_ABI = [
+  "function processAttestation(uint64 chainKey, uint64 blockHeight, bytes encodedTransaction, bytes32 merkleRoot, tuple(bytes32 hash, bool isLeft)[] siblings, bytes32 lowerEndpointDigest, bytes32[] continuityRoots) external returns (bool)",
+  "function setSource(tuple(uint64 chainKey, address emitter, bytes32 topic0, uint8 borrowerLoc, uint8 borrowerDataWord, uint8 amountDataWord, uint256 minAmount, bool negative, bool enabled) cfg) external",
+  "function setLocalReporter(address reporter, bool enabled) external",
+  "function sourceIdFor(uint64 chainKey, address emitter, bytes32 topic0) external pure returns (bytes32)",
+  "function localSourceIdFor(address reporter) external pure returns (bytes32)",
+  "function recordLocalRepay(address borrower, uint256 amount) external",
+  "function scoreOf(address borrower) external view returns (uint256)",
+  "function passports(address) external view returns (uint40 firstSeenAt, uint32 cappedRepays, uint32 negativeEvents, uint16 sourceCount)",
+  "function sourceStats(address, bytes32) external view returns (uint32 count, uint40 lastAt)",
+  "function sources(bytes32) external view returns (uint64 chainKey, address emitter, bytes32 topic0, uint8 borrowerLoc, uint8 borrowerDataWord, uint8 amountDataWord, uint256 minAmount, bool negative, bool enabled)",
+  "event SourceSet(bytes32 indexed sourceId, uint64 chainKey, address emitter, bytes32 topic0, bool enabled)",
+  "event LocalReporterSet(address indexed reporter, bool enabled)",
+  "event RepayRecorded(address indexed borrower, bytes32 indexed sourceId, uint32 sourceCountForBorrower)",
+  "event NegativeEventRecorded(address indexed borrower, bytes32 indexed sourceId)",
+  "event AttestationProcessed(bytes32 indexed txKey, bytes32 indexed sourceId, address indexed borrower, uint256 amount)",
 ] as const;
 
-export const STREAM_VERIFIER_ASC_ABI = [
-  "function processStreamEvent(uint64 chainKey, uint64 blockHeight, bytes encodedTransaction, bytes32 merkleRoot, tuple(bytes32 hash, bool isLeft)[] siblings, bytes32 lowerEndpointDigest, bytes32[] continuityRoots) external returns (bool)",
-  "function remainingLocked(address user) external view returns (uint256)",
-  "function collateralToken(address user) external view returns (address)",
-  "function streamIdOf(address) external view returns (uint256)",
-  "function streamById(uint256) external view returns (address borrower, address token, uint128 depositAmount, uint40 startTime, uint40 endTime, bool exists)",
-  "event StreamRegistered(address indexed borrower, address indexed token, uint256 depositAmount)",
-  "event StreamEventProcessed(bytes32 indexed txKey, bytes32 indexed sig, address indexed borrower)",
-] as const;
-
-export const CREDIT_POOL_ABI = [
-  "function creditLimit(address user) public view returns (uint256)",
-  "function collateralValue(address user) public view returns (uint256)",
-  "function collateralConfig(address token) external view returns (address priceOracle, uint8 tokenDecimals, uint256 baseLtvBps, bool enabled)",
-  "function setCollateralToken(address token, address priceOracle, uint256 baseLtvBps, bool enabled) external",
+export const PASSPORT_POOL_ABI = [
+  "function depositCollateral() external payable",
+  "function withdrawCollateral(uint256 amount) external",
+  "function maxLtvBps(address borrower) public view returns (uint256)",
+  "function collateralValue(address borrower) public view returns (uint256)",
+  "function creditLimit(address borrower) public view returns (uint256)",
   "function borrow(uint256 amount) external",
   "function repay(uint256 amount) external",
-  "function settleGarnish(uint256 amount) external",
   "function deposit(uint256 amount) external",
   "function withdrawLP(uint256 amount) external",
+  "function collateralOf(address) public view returns (uint256)",
   "function debt(address) public view returns (uint256)",
-  "function pendingGarnish(address) public view returns (uint256)",
-  "function repaidLoans(address) public view returns (uint256)",
+  "function principalSinceLastReport(address) public view returns (uint256)",
+  "function lpDeposits(address) public view returns (uint256)",
+  "function totalLPDeposits() public view returns (uint256)",
+  "event CollateralDeposited(address indexed borrower, uint256 amount)",
+  "event CollateralWithdrawn(address indexed borrower, uint256 amount)",
   "event Borrowed(address indexed borrower, uint256 amount, uint256 newDebt)",
-  "event GarnishRecorded(address indexed borrower, uint256 amount, uint256 pendingGarnish)",
-  "event GarnishSettled(address indexed borrower, uint256 amount, uint256 remainingDebt)",
-  "event CollateralTokenSet(address indexed token, address priceOracle, uint256 baseLtvBps, bool enabled)",
+  "event Repaid(address indexed borrower, uint256 amount, uint256 remainingDebt)",
+  "event FullRepayReported(address indexed borrower, uint256 principal)",
+  "event Deposited(address indexed lp, uint256 amount)",
+  "event WithdrawnLP(address indexed lp, uint256 amount)",
 ] as const;
 
 export const PRICE_ORACLE_ABI = [
@@ -68,9 +61,33 @@ export const TEST_USDC_ABI = [
   "function decimals() view returns (uint8)",
 ] as const;
 
-/** Demo collateral token on Sepolia (contracts/source/src/NebulaToken.sol). Not a real
- * third-party asset -- exists so the demo has a controllable price and supply. */
-export const NEBULA_TOKEN_ABI = [
+/** Minimal surface of Aave V3's real, unmodified Pool contract on Sepolia -- not ours.
+ *  Repay's indexed fields verified 2026-08-27 against aave-dao/aave-v3-origin's IPool.sol:
+ *  reserve, user AND repayer are all indexed; only amount and useATokens are data. */
+export const AAVE_POOL_ABI = [
+  "function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external",
+  "function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external",
+  "function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf) external returns (uint256)",
+  "event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)",
+] as const;
+
+/** Minimal surface of Morpho Blue's real, unmodified contract on Sepolia -- not ours.
+ *  Repay's indexed fields verified 2026-08-27 against morpho-org/morpho-blue's
+ *  EventsLib.sol: id, caller AND onBehalf are all indexed; only assets and shares are
+ *  data. MarketParams/Id shapes verified against IMorpho.sol. */
+export const MORPHO_ABI = [
+  "function createMarket(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams) external",
+  "function supply(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external returns (uint256, uint256)",
+  "function supplyCollateral(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 assets, address onBehalf, bytes data) external",
+  "function borrow(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external returns (uint256, uint256)",
+  "function repay(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external returns (uint256, uint256)",
+  "function isLltvEnabled(uint256 lltv) external view returns (bool)",
+  "function isIrmEnabled(address irm) external view returns (bool)",
+  "event Repay(bytes32 indexed id, address indexed caller, address indexed onBehalf, uint256 assets, uint256 shares)",
+] as const;
+
+/** Demo tokens for the Morpho market on Sepolia (contracts/source/src/DemoToken.sol). */
+export const DEMO_TOKEN_ABI = [
   "function mint(address to, uint256 amount) external",
   "function balanceOf(address) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",

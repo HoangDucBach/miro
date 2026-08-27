@@ -1,7 +1,15 @@
 import "dotenv/config";
 import { Contract, Wallet, formatUnits } from "ethers";
 import type { chainInfo, proofProvider } from "@gluwa/usc-sdk";
-import { SABLIER_LOCKUP_ABI, NEBULA_TOKEN_ABI, CREDIT_POOL_ABI, TEST_USDC_ABI, PRICE_ORACLE_ABI } from "@miro/shared";
+import {
+  CREDIT_PASSPORT_ABI,
+  PASSPORT_POOL_ABI,
+  TEST_USDC_ABI,
+  AAVE_POOL_ABI,
+  MORPHO_ABI,
+  DEMO_TOKEN_ABI,
+  EVENT_TOPICS,
+} from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
   ATTESTATION_TIMEOUT_MS,
@@ -11,221 +19,267 @@ import {
   sourceProvider,
 } from "./lib/chain.js";
 import { makeHostedProofBuilder } from "./lib/proof.js";
-import { ascContract, submitProof } from "./lib/submitter.js";
+import { passportContract, submitProof } from "./lib/submitter.js";
 
 /**
- * Scripted E2E demo flow (token-vesting design):
- *   whitelist NEBULA as collateral -> grantor mints + locks it in a real Sablier stream ->
- *   relay -> borrow -> withdraw vested NEBULA -> relay -> garnish freezes borrowing ->
- *   settle -> repay -> LTV steps up
+ * Scripted E2E demo flow (credit passport design):
+ *   register sources -> real Aave repay -> relay -> score ticks up ->
+ *   real Morpho repay -> relay -> diversity bonus -> local PassportPool loan,
+ *   repaid in full -> pool reports to the same passport it reads from.
  *
- * Runs against real deployed contracts (SABLIER_LOCKUP_CONTRACT / ASC_CONTRACT / etc in
- * .env) plus Sablier's own real, unmodified SablierLockup deployment on Sepolia -- see
- * docs/attestcoin-integration.md for that address. Inlines the same relay steps
- * apps/worker/src/index.ts runs continuously, so this script doesn't need a separate
- * worker process running alongside it.
+ * Runs against real deployed contracts (CREDIT_PASSPORT_CONTRACT / PASSPORT_POOL_CONTRACT
+ * / etc in .env) plus Aave V3's and Morpho Blue's real, unmodified Sepolia deployments --
+ * see docs/attestcoin-integration.md for addresses.
  *
  * Attestation waits are minutes-scale on testnet, so a full run can take a while.
  * For the demo video, pre-record segments instead of running this live.
+ *
+ * Known live-run risks (see docs/attestcoin-integration.md and the plan's Risks section):
+ * Aave's public testnet Faucet caps mints at 10000 units and may be permissioned on some
+ * deployments; the Morpho market bootstrap needs an enabled LLTV + IRM, checked on-chain
+ * below rather than assumed.
  */
 
-// 5 minutes turned out too short in the salary-stream design: the relay pipeline itself
-// (two attestation waits, tx confirmations) regularly eats several minutes end to end, so
-// by the time creditLimit was checked the stream had already fully vested and there was
-// nothing left to borrow against. 30 minutes leaves enough of a runway for that to stay
-// meaningfully nonzero -- same reasoning applies here.
-const STREAM_DURATION_SECONDS = 30 * 60;
-const STREAM_DEPOSIT = 6000n * 10n ** 18n; // 6000 NEBULA, 18 decimals
-const DEMO_PRICE_USD = 3000n * 10n ** 8n; // $3000/NEBULA, 8 decimals (FixedPriceOracle convention)
-const DEMO_BASE_LTV_BPS = 4000n; // lower than a blue-chip-collateral cap: NEBULA is a thin-liquidity demo token
-const VEST_WAIT_MS = 60_000; // real wall-clock wait for some NEBULA to vest before withdrawing
+const AAVE_BORROW_INTEREST_RATE_MODE = 2n; // variable
+const MORPHO_LLTV = 860000000000000000n; // 86%, a commonly-enabled Morpho LLTV tier
+const DEMO_COLLATERAL_DEPOSIT = 10_000n * 10n ** 18n;
+const DEMO_LOAN_LIQUIDITY = 10_000n * 10n ** 18n;
+const DEMO_BORROW_AMOUNT = 1_000n * 10n ** 18n;
 
 async function main() {
   const source = sourceProvider();
   const cc = creditcoinProvider();
 
-  const sablierLockupAddress = requireEnv("SABLIER_LOCKUP_CONTRACT");
-  const nebulaAddress = requireEnv("NEBULA_TOKEN_CONTRACT");
-  const ascAddress = requireEnv("ASC_CONTRACT");
-  const poolAddress = requireEnv("CREDIT_POOL_CONTRACT");
+  const passportAddress = requireEnv("CREDIT_PASSPORT_CONTRACT");
+  const poolAddress = requireEnv("PASSPORT_POOL_CONTRACT");
   const usdcAddress = requireEnv("TEST_USDC_CONTRACT");
-  const oracleAddress = requireEnv("PRICE_ORACLE_CONTRACT");
+  const aavePoolAddress = requireEnv("AAVE_POOL_CONTRACT");
+  const aaveFaucetAddress = requireEnv("AAVE_FAUCET_CONTRACT");
+  const aaveDaiAddress = requireEnv("AAVE_DAI_CONTRACT");
+  const morphoAddress = requireEnv("MORPHO_CONTRACT");
+  const demoLoanTokenAddress = requireEnv("DEMO_LOAN_TOKEN_CONTRACT");
+  const demoCollateralTokenAddress = requireEnv("DEMO_COLLATERAL_TOKEN_CONTRACT");
+  const morphoOracleAddress = requireEnv("MORPHO_ORACLE_CONTRACT");
   const proverUrl = process.env.PROVER_URL ?? "https://prover.cc3-testnet.creditcoin.network";
 
-  const grantorKey = requireEnv("DEPLOYER_PRIVATE_KEY"); // plays the token-grantor role on Sepolia
-  const poolOwnerKey = requireEnv("CC3_DEPLOYER_PRIVATE_KEY"); // CreditPool owner, whitelists collateral
-  const workerKey = requireEnv("WORKER_PRIVATE_KEY"); // relay role, submits proofs to the ASC
+  const deployerKey = requireEnv("DEPLOYER_PRIVATE_KEY"); // owns the demo Sepolia assets
+  const poolOwnerKey = requireEnv("CC3_DEPLOYER_PRIVATE_KEY"); // CreditPassport/PassportPool owner
+  const workerKey = requireEnv("WORKER_PRIVATE_KEY"); // relay role, submits proofs
 
-  const grantorSepolia = new Wallet(grantorKey, source);
+  const deployerSepolia = new Wallet(deployerKey, source);
   const poolOwnerCC = new Wallet(poolOwnerKey, cc);
 
-  // Generate a fresh throwaway borrower per run -- sidesteps StreamVerifierASC's
-  // one-active-stream-per-borrower limit colliding with a previous run's leftover state,
-  // funded with just enough ETH/tCTC from the grantor to cover its own gas.
+  // Fresh borrower per run so replays and the demo score progression stay legible.
   const borrower = Wallet.createRandom();
   const borrowerSepolia = borrower.connect(source);
   const borrowerCC = borrower.connect(cc);
 
-  const sablierLockup = new Contract(sablierLockupAddress, SABLIER_LOCKUP_ABI, grantorSepolia);
-  const nebula = new Contract(nebulaAddress, NEBULA_TOKEN_ABI, grantorSepolia);
-  const pool = new Contract(poolAddress, CREDIT_POOL_ABI, borrowerCC);
+  const passport = new Contract(passportAddress, CREDIT_PASSPORT_ABI, poolOwnerCC);
+  const pool = new Contract(poolAddress, PASSPORT_POOL_ABI, borrowerCC);
   const usdc = new Contract(usdcAddress, TEST_USDC_ABI, borrowerCC);
-  const asc = ascContract(cc, ascAddress, workerKey);
+  const aavePool = new Contract(aavePoolAddress, AAVE_POOL_ABI, borrowerSepolia);
+  const aaveFaucet = new Contract(aaveFaucetAddress, ["function mint(address token, address to, uint256 amount) external returns (uint256)"], deployerSepolia);
+  const aaveDai = new Contract(aaveDaiAddress, DEMO_TOKEN_ABI, borrowerSepolia);
+  const morpho = new Contract(morphoAddress, MORPHO_ABI, deployerSepolia);
+  const relayer = passportContract(cc, passportAddress, workerKey);
 
   const chainInfoProvider = makeChainInfoProvider(cc);
   const sepolia = await resolveSourceChainKey(chainInfoProvider);
   const builder = makeHostedProofBuilder(sepolia.chainKey, proverUrl);
 
-  console.log(`[e2e] grantor=${grantorSepolia.address} borrower=${borrower.address}`);
+  console.log(`[e2e] deployer=${deployerSepolia.address} borrower=${borrower.address}`);
 
-  console.log("[e2e] 0/11 funding the fresh borrower wallet for gas...");
-  const fundSepoliaTx = await grantorSepolia.sendTransaction({ to: borrower.address, value: 5_000_000_000_000_000n });
+  console.log("[e2e] 0/9 funding the fresh borrower wallet for gas...");
+  const fundSepoliaTx = await deployerSepolia.sendTransaction({ to: borrower.address, value: 50_000_000_000_000_000n });
   await fundSepoliaTx.wait();
-  const fundCCTx = await grantorSepolia.connect(cc).sendTransaction({ to: borrower.address, value: 20_000_000_000_000_000_000n });
+  const fundCCTx = await new Wallet(deployerKey, cc).sendTransaction({ to: borrower.address, value: 20_000_000_000_000_000_000n });
   await fundCCTx.wait();
 
-  // 1. Whitelist NEBULA as collateral, if this is the first run.
-  const existingConfig = await pool.collateralConfig(nebulaAddress);
-  if (!existingConfig.enabled) {
-    console.log("[e2e] 1/11 whitelisting NEBULA as collateral in CreditPool...");
-    const tx = await (pool.connect(poolOwnerCC) as Contract).setCollateralToken(
-      nebulaAddress,
-      oracleAddress,
-      DEMO_BASE_LTV_BPS,
-      true,
-    );
-    await tx.wait();
-    const oracle = new Contract(oracleAddress, PRICE_ORACLE_ABI, poolOwnerCC);
-    const setPriceTx = await oracle.setPrice(DEMO_PRICE_USD);
-    await setPriceTx.wait();
-    console.log(`[e2e]     whitelisted, tx: ${tx.hash}`);
-  } else {
-    console.log("[e2e] 1/11 NEBULA already whitelisted, skipping");
-  }
+  // 1. Register both Sepolia sources + the local PassportPool reporter, if this is the
+  //    first run. Registration is config, not a redeploy -- see CreditPassport.setSource.
+  console.log("[e2e] 1/9 ensuring sources are registered on the passport...");
+  await ensureAaveSourceRegistered(passport, sepolia.chainKey, aavePoolAddress);
+  await ensureMorphoSourceRegistered(passport, sepolia.chainKey, morphoAddress);
+  await ensureLocalReporterRegistered(passport, poolAddress);
 
-  // 2. Grantor mints NEBULA and locks it in a real Sablier Lockup Linear stream, on Sepolia.
-  console.log("[e2e] 2/11 minting NEBULA and creating a Sablier stream...");
-  const mintTx = await nebula.mint(grantorSepolia.address, STREAM_DEPOSIT);
-  await mintTx.wait();
-  const approveTx = await nebula.approve(sablierLockupAddress, STREAM_DEPOSIT);
-  await approveTx.wait();
+  // 2. Aave leg: faucet DAI, supply as collateral, borrow a small amount, repay in full.
+  console.log("[e2e] 2/9 Aave: faucet + supply + borrow...");
+  const daiAmount = 1000n * 10n ** 18n;
+  const faucetTx = await aaveFaucet.mint(aaveDaiAddress, borrower.address, daiAmount);
+  await faucetTx.wait();
+  await (await aaveDai.approve(aavePoolAddress, daiAmount)).wait();
+  await (await aavePool.supply(aaveDaiAddress, daiAmount, borrower.address, 0)).wait();
+  const aaveBorrowAmount = 100n * 10n ** 18n;
+  await (await aavePool.borrow(aaveDaiAddress, aaveBorrowAmount, AAVE_BORROW_INTEREST_RATE_MODE, 0, borrower.address)).wait();
 
-  const createTx = await sablierLockup.createWithDurationsLL(
-    {
-      sender: grantorSepolia.address,
-      recipient: borrowerSepolia.address,
-      depositAmount: STREAM_DEPOSIT,
-      token: nebulaAddress,
-      cancelable: false, // required: StreamVerifierASC rejects any cancelable stream
-      transferable: false, // required: keeps the recipient a permanent identity for the loan
-      shape: "miro-demo-linear",
-    },
-    { start: 0n, cliff: 0n }, // no instant/cliff unlock, pure linear vesting
-    0, // granularity: continuous per-second vesting
-    { cliff: 0, total: STREAM_DURATION_SECONDS },
+  console.log("[e2e] 3/9 Aave: repaying in full...");
+  // Extra DAI to cover any interest accrued between borrow and repay.
+  await (await aaveFaucet.mint(aaveDaiAddress, borrower.address, daiAmount)).wait();
+  await (await aaveDai.approve(aavePoolAddress, aaveBorrowAmount * 2n)).wait();
+  const aaveRepayTx = await aavePool.repay(aaveDaiAddress, aaveBorrowAmount * 2n, AAVE_BORROW_INTEREST_RATE_MODE, borrower.address);
+  const aaveRepayReceipt = await aaveRepayTx.wait();
+
+  console.log("[e2e] 4/9 relaying Aave Repay...");
+  await relayEvent(chainInfoProvider, builder, sepolia.chainKey, relayer, aaveRepayTx.hash, aaveRepayReceipt.blockNumber, "Aave Repay");
+  console.log(`[e2e]     scoreOf(borrower) = ${await passport.scoreOf(borrower.address)}`);
+
+  // 5. Morpho leg: create (if needed) a demo market, supply collateral, borrow, repay.
+  console.log("[e2e] 5/9 Morpho: ensuring demo market exists...");
+  const marketParams = await ensureMorphoMarketExists(
+    morpho,
+    demoLoanTokenAddress,
+    demoCollateralTokenAddress,
+    morphoOracleAddress,
   );
-  const createReceipt = await createTx.wait();
-  const streamId = parseStreamId(sablierLockup, createReceipt);
-  console.log(`[e2e]     tx: ${createTx.hash}, streamId: ${streamId}`);
+  await seedMorphoLiquidity(morpho, demoLoanTokenAddress, deployerSepolia, marketParams);
 
-  // 3. Relay CreateLockupLinearStream to the verifier.
-  console.log("[e2e] 3/11 relaying CreateLockupLinearStream...");
-  await relayEvent(
-    chainInfoProvider,
-    builder,
-    sepolia.chainKey,
-    asc,
-    createTx.hash,
-    createReceipt.blockNumber,
-    "CreateLockupLinearStream",
-  );
-  const recordedToken: string = await asc.collateralToken(borrowerCC.address);
-  console.log(`[e2e]     asc.collateralToken(borrower) = ${recordedToken}`);
+  console.log("[e2e] 6/9 Morpho: supply collateral + borrow...");
+  const demoCollateralToken = new Contract(demoCollateralTokenAddress, DEMO_TOKEN_ABI, deployerSepolia);
+  await (await demoCollateralToken.mint(borrower.address, DEMO_COLLATERAL_DEPOSIT)).wait();
+  const demoCollateralAsBorrower = demoCollateralToken.connect(borrowerSepolia) as Contract;
+  await (await demoCollateralAsBorrower.approve(morphoAddress, DEMO_COLLATERAL_DEPOSIT)).wait();
+  const morphoAsBorrower = morpho.connect(borrowerSepolia) as Contract;
+  await (await morphoAsBorrower.supplyCollateral(marketParams, DEMO_COLLATERAL_DEPOSIT, borrower.address, "0x")).wait();
+  await (await morphoAsBorrower.borrow(marketParams, DEMO_BORROW_AMOUNT, 0n, borrower.address, borrower.address)).wait();
 
-  // 4. Seed LP liquidity so the pool has tUSDC to lend, if it doesn't already.
-  console.log("[e2e] 4/11 seeding LP liquidity...");
+  console.log("[e2e] 7/9 Morpho: repaying in full...");
+  const demoLoanToken = new Contract(demoLoanTokenAddress, DEMO_TOKEN_ABI, deployerSepolia);
+  await (await demoLoanToken.mint(borrower.address, DEMO_BORROW_AMOUNT)).wait(); // cover accrued interest
+  const demoLoanAsBorrower = demoLoanToken.connect(borrowerSepolia) as Contract;
+  await (await demoLoanAsBorrower.approve(morphoAddress, DEMO_BORROW_AMOUNT * 2n)).wait();
+  const morphoRepayTx = await morphoAsBorrower.repay(marketParams, DEMO_BORROW_AMOUNT * 2n, 0n, borrower.address, "0x");
+  const morphoRepayReceipt = await morphoRepayTx.wait();
+
+  console.log("[e2e] 8/9 relaying Morpho Repay...");
+  await relayEvent(chainInfoProvider, builder, sepolia.chainKey, relayer, morphoRepayTx.hash, morphoRepayReceipt.blockNumber, "Morpho Repay");
+  console.log(`[e2e]     scoreOf(borrower) = ${await passport.scoreOf(borrower.address)} (diversity bonus should show up now)`);
+
+  // 9. Local leg: LP seeds PassportPool, borrower deposits tCTC, borrows, repays in full
+  //    -- the same pool that just read the boosted score also feeds it back.
+  console.log("[e2e] 9/9 PassportPool: local borrow/repay loop...");
   await seedLP(usdc.connect(poolOwnerCC) as Contract, pool.connect(poolOwnerCC) as Contract, poolOwnerCC.address);
 
-  // 5. Borrower borrows against the stream.
-  const limit: bigint = await pool.creditLimit(borrowerCC.address);
-  console.log(`[e2e] 5/11 credit limit: ${formatUnits(limit, 6)} tUSDC`);
+  const ltvBefore: bigint = await pool.maxLtvBps(borrower.address);
+  console.log(`[e2e]     maxLtvBps(borrower) before local history = ${ltvBefore}`);
+
+  await (await pool.depositCollateral({ value: 2_500_000_000_000_000_000n })).wait(); // 2.5 tCTC
+  const limit: bigint = await pool.creditLimit(borrower.address);
+  console.log(`[e2e]     credit limit: ${formatUnits(limit, 6)} tUSDC`);
   if (limit > 0n) {
     const borrowAmount = limit / 2n;
-    const tx = await pool.borrow(borrowAmount);
-    await tx.wait();
-    console.log(`[e2e]     borrowed ${formatUnits(borrowAmount, 6)} tUSDC, tx: ${tx.hash}`);
-  } else {
-    console.log("[e2e]     credit limit is 0 (stream not vesting yet?), skipping borrow");
+    await (await pool.borrow(borrowAmount)).wait();
+    const owed: bigint = await pool.debt(borrower.address);
+    await ensureUsdcBalance(usdc, borrower.address, owed);
+    await (await usdc.approve(poolAddress, owed)).wait();
+    await (await pool.repay(owed)).wait();
+    console.log("[e2e]     repaid in full -- PassportPool should have reported this to the passport");
   }
 
-  // 6. Wait for some real vesting time, then withdraw vested NEBULA on Sepolia.
-  console.log(`[e2e] 6/11 waiting ${VEST_WAIT_MS / 1000}s for NEBULA to vest...`);
-  await sleep(VEST_WAIT_MS);
-  const withdrawable: bigint = await sablierLockup.withdrawableAmountOf(streamId);
-  console.log(`[e2e]     withdrawable balance: ${formatUnits(withdrawable, 18)} NEBULA`);
-  if (withdrawable > 0n) {
-    const sablierAsBorrower = sablierLockup.connect(borrowerSepolia) as Contract;
-    const wTx = await sablierAsBorrower.withdrawMax(streamId, borrowerSepolia.address);
-    const wReceipt = await wTx.wait();
-    console.log(`[e2e]     withdrew, tx: ${wTx.hash}`);
+  console.log(`[e2e] done. final scoreOf(borrower) = ${await passport.scoreOf(borrower.address)}`);
+  console.log(`[e2e]        maxLtvBps(borrower) after full loop = ${await pool.maxLtvBps(borrower.address)}`);
+}
 
-    // 7. Relay WithdrawFromLockupStream -- this is what triggers garnishment.
-    console.log("[e2e] 7/11 relaying WithdrawFromLockupStream...");
-    await relayEvent(
-      chainInfoProvider,
-      builder,
-      sepolia.chainKey,
-      asc,
-      wTx.hash,
-      wReceipt.blockNumber,
-      "WithdrawFromLockupStream",
+async function ensureAaveSourceRegistered(passport: Contract, chainKey: number, aavePoolAddress: string): Promise<void> {
+  const sourceId = await passport.sourceIdFor(chainKey, aavePoolAddress, EVENT_TOPICS.AaveRepay);
+  const existing = await passport.sources(sourceId);
+  if (existing.enabled) return;
+  const tx = await passport.setSource({
+    chainKey,
+    emitter: aavePoolAddress,
+    topic0: EVENT_TOPICS.AaveRepay,
+    borrowerLoc: 1, // Topic2 -- Aave's Repay indexes reserve, user, repayer; user is topic 2
+    borrowerDataWord: 0,
+    amountDataWord: 0, // amount is the only non-indexed field before useATokens
+    minAmount: 10n * 10n ** 18n, // 10 DAI floor, anti-dust
+    negative: false,
+    enabled: true,
+  });
+  await tx.wait();
+}
+
+async function ensureMorphoSourceRegistered(passport: Contract, chainKey: number, morphoAddress: string): Promise<void> {
+  const sourceId = await passport.sourceIdFor(chainKey, morphoAddress, EVENT_TOPICS.MorphoRepay);
+  const existing = await passport.sources(sourceId);
+  if (existing.enabled) return;
+  const tx = await passport.setSource({
+    chainKey,
+    emitter: morphoAddress,
+    topic0: EVENT_TOPICS.MorphoRepay,
+    borrowerLoc: 2, // Topic3 -- Morpho's Repay indexes id, caller, onBehalf; onBehalf is topic 3
+    borrowerDataWord: 0,
+    amountDataWord: 0, // assets is the first non-indexed field, before shares
+    minAmount: 10n * 10n ** 18n,
+    negative: false,
+    enabled: true,
+  });
+  await tx.wait();
+}
+
+async function ensureLocalReporterRegistered(passport: Contract, poolAddress: string): Promise<void> {
+  const already: boolean = await passport.localReporters(poolAddress);
+  if (already) return;
+  const tx = await passport.setLocalReporter(poolAddress, true);
+  await tx.wait();
+}
+
+interface MarketParams {
+  loanToken: string;
+  collateralToken: string;
+  oracle: string;
+  irm: string;
+  lltv: bigint;
+}
+
+/** Creates the demo market once; safe to call repeatedly since Morpho's own createMarket
+ *  is idempotent-by-params (same params always resolve to the same market id). */
+async function ensureMorphoMarketExists(
+  morpho: Contract,
+  loanToken: string,
+  collateralToken: string,
+  oracle: string,
+): Promise<MarketParams> {
+  const irm = requireEnv("MORPHO_IRM_CONTRACT"); // e.g. AdaptiveCurveIRM's real Sepolia address
+  const lltvEnabled: boolean = await morpho.isLltvEnabled(MORPHO_LLTV);
+  if (!lltvEnabled) {
+    throw new Error(
+      `LLTV ${MORPHO_LLTV} not enabled on this Morpho deployment -- check morpho.isLltvEnabled() for a real tier before running this script`,
     );
-  } else {
-    console.log("[e2e]     nothing vested yet, skipping withdraw + garnish steps");
+  }
+  const irmEnabled: boolean = await morpho.isIrmEnabled(irm);
+  if (!irmEnabled) {
+    throw new Error(`IRM ${irm} not enabled on this Morpho deployment -- check morpho.isIrmEnabled()`);
   }
 
-  // 8. Confirm garnishment froze borrowing, then settle it.
-  const pendingGarnish: bigint = await pool.pendingGarnish(borrowerCC.address);
-  console.log(`[e2e] 8/11 pendingGarnish: ${formatUnits(pendingGarnish, 6)} tUSDC`);
-  if (pendingGarnish > 0n) {
-    try {
-      await pool.borrow.staticCall(1n);
-      console.log("[e2e]     WARNING: borrow() did not revert despite pending garnish");
-    } catch {
-      console.log("[e2e]     confirmed: borrow() reverts while garnish is outstanding");
-    }
-
-    await ensureUsdcBalance(usdc, borrowerCC.address, pendingGarnish);
-    const approveGarnishTx = await usdc.approve(poolAddress, pendingGarnish);
-    await approveGarnishTx.wait();
-    const settleTx = await pool.settleGarnish(pendingGarnish);
-    await settleTx.wait();
-    console.log(`[e2e]     settled garnish, tx: ${settleTx.hash}`);
+  const marketParams: MarketParams = { loanToken, collateralToken, oracle, irm, lltv: MORPHO_LLTV };
+  try {
+    await (await morpho.createMarket(marketParams)).wait();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[e2e]     createMarket skipped (${msg}) -- likely already exists`);
   }
+  return marketParams;
+}
 
-  // 9. Repay whatever debt remains in full, growing the borrower's credit tier.
-  const debt: bigint = await pool.debt(borrowerCC.address);
-  console.log(`[e2e] 9/11 remaining debt: ${formatUnits(debt, 6)} tUSDC`);
-  if (debt > 0n) {
-    await ensureUsdcBalance(usdc, borrowerCC.address, debt);
-    const approveDebtTx = await usdc.approve(poolAddress, debt);
-    await approveDebtTx.wait();
-    const repayTx = await pool.repay(debt);
-    await repayTx.wait();
-    console.log(`[e2e]     repaid in full, tx: ${repayTx.hash}`);
-  }
-
-  const repaidLoans: bigint = await pool.repaidLoans(borrowerCC.address);
-  console.log(`[e2e] done. repaidLoans(borrower) = ${repaidLoans}`);
+async function seedMorphoLiquidity(
+  morpho: Contract,
+  loanTokenAddress: string,
+  lender: Wallet,
+  marketParams: MarketParams,
+): Promise<void> {
+  const loanToken = new Contract(loanTokenAddress, DEMO_TOKEN_ABI, lender);
+  await (await loanToken.mint(lender.address, DEMO_LOAN_LIQUIDITY)).wait();
+  await (await loanToken.approve(await morpho.getAddress(), DEMO_LOAN_LIQUIDITY)).wait();
+  const morphoAsLender = morpho.connect(lender) as Contract;
+  await (await morphoAsLender.supply(marketParams, DEMO_LOAN_LIQUIDITY, 0n, lender.address, "0x")).wait();
 }
 
 /** Waits for attestation, fetches the proof, and submits it — the same steps the
- *  worker's drainQueue runs, just inlined here so this script is self-contained. */
+ *  worker's queue processor runs, just inlined here so this script is self-contained. */
 async function relayEvent(
   chainInfoProvider: chainInfo.ChainInfoProvider,
   builder: proofProvider.ProofProvider,
   chainKey: number,
-  asc: Contract,
+  passport: Contract,
   txHash: string,
   blockNumber: number,
   label: string,
@@ -235,7 +289,7 @@ async function relayEvent(
   console.log(`[e2e]     fetching proof for ${label}...`);
   const r = await builder.getProof(txHash);
   if (!r.success || !r.data) throw new Error(r.error ?? `proof unavailable for ${label}`);
-  const result = await submitProof(asc, r.data);
+  const result = await submitProof(passport, r.data);
   console.log(`[e2e]     relayed ${label}: ${result}`);
 }
 
@@ -271,25 +325,6 @@ async function ensureUsdcBalance(usdc: Contract, holder: string, needed: bigint)
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`insufficient tUSDC (${formatUnits(balance, 6)}) and faucet unavailable: ${msg}`);
   }
-}
-
-function parseStreamId(
-  sablierLockup: Contract,
-  receipt: { logs: Array<{ topics: readonly string[]; data: string }> },
-): bigint {
-  for (const log of receipt.logs) {
-    try {
-      const parsed = sablierLockup.interface.parseLog({ topics: log.topics as string[], data: log.data });
-      if (parsed?.name === "CreateLockupLinearStream") return parsed.args.streamId as bigint;
-    } catch {
-      // not one of our events, skip
-    }
-  }
-  throw new Error("CreateLockupLinearStream log not found in create tx receipt");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function requireEnv(key: string): string {

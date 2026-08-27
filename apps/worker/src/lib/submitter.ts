@@ -1,5 +1,5 @@
 import { Contract, NonceManager, Wallet, type JsonRpcProvider } from "ethers";
-import { STREAM_VERIFIER_ASC_ABI } from "@miro/shared";
+import { CREDIT_PASSPORT_ABI } from "@miro/shared";
 import type { ProofData } from "./proof.js";
 
 const MAX_RETRIES = 3;
@@ -11,17 +11,17 @@ const RETRY_BACKOFF_MS = 5000;
  * or replace the other. NonceManager serializes nonce assignment while still letting the
  * RPC calls for everything else (attest-wait, proof fetch) run in parallel.
  */
-export function ascContract(cc: JsonRpcProvider, ascAddress: string, workerKey: string): Contract {
+export function passportContract(cc: JsonRpcProvider, passportAddress: string, workerKey: string): Contract {
   const wallet = new Wallet(workerKey, cc);
-  return new Contract(ascAddress, STREAM_VERIFIER_ASC_ABI, new NonceManager(wallet));
+  return new Contract(passportAddress, CREDIT_PASSPORT_ABI, new NonceManager(wallet));
 }
 
-/** Submits a proof to StreamVerifierASC.processStreamEvent, with retry on transient failures. */
-export async function submitProof(asc: Contract, proof: ProofData): Promise<string> {
+/** Submits a proof to CreditPassport.processAttestation, with retry on transient failures. */
+export async function submitProof(passport: Contract, proof: ProofData): Promise<string> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const tx = await asc.processStreamEvent(
+      const tx = await passport.processAttestation(
         proof.chainKey,
         proof.headerNumber,
         proof.txBytes,
