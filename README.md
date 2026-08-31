@@ -25,7 +25,10 @@ a real Morpho Blue repay were each attested and verified on-chain, taking the pa
 score from 0 → 10 → 40 → 70 across two cross-chain sources plus the local PassportPool
 feedback loop — see
 [docs/attestcoin-integration.md](docs/attestcoin-integration.md#live-e2e-run--2026-08-27)
-for the full run log and the addresses it ran against. `apps/web` is still deferred.
+for the full run log and the addresses it ran against. `apps/web` is scaffolded: a
+Next.js dashboard reading a live `scoreOf()` and driving `PassportPool` (deposit/borrow/
+repay/withdraw), typed hooks generated straight from `@miro/shared`'s ABIs — see
+[apps/web/README.md](apps/web/README.md).
 
 - [`contracts/creditcoin/src/libs/`](contracts/creditcoin/src/libs/) — `EvmV1Decoder.sol` and
   `NativeQueryVerifier.sol` are vendored verbatim from the real reference implementation
@@ -55,7 +58,7 @@ miro/
 │   └── config/        # shared tsconfig / eslint presets
 ├── apps/
 │   ├── worker/         # @miro/worker — the Attestcoin relay (listeners → proof → submit)
-│   └── web/            # @miro/web — dApp UI (deferred)
+│   └── web/            # @miro/web — Next.js dashboard (passport score + PassportPool actions)
 └── docs/                # product spec, technical spec, integration writeup, demo script
 ```
 

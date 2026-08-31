@@ -213,4 +213,9 @@ Completed:
 - [x] 126 tests passing: 86 `contracts/creditcoin`, 12 `contracts/source`, 28 `apps/worker` (vitest).
 - [x] Deployed to CC3 Testnet + Sepolia (demo assets), `.env` and `docs/attestcoin-integration.md` updated with real addresses.
 - [x] Live `e2e.ts` run against real infra, twice, identical results both times: real Aave V3 repay (LINK, not DAI/USDC/USDT -- all three sit above their 2B supply cap from public testnet usage, a real live-verified finding) and real Morpho Blue repay each attested and verified on-chain, `scoreOf` progressing 0 → 10 → 40 → 70 exactly per the scoring formula. Two real bugs found only by running live (missing `localReporters` ABI getter, Morpho over-repayment causing a shares underflow) and one transient-RPC issue (mitigated with 2-confirmation waits) -- see attestcoin-integration.md's live-run section for details.
-- [ ] `apps/web` remains deferred, unaffected by this pivot.
+- [x] `apps/web` scaffolded (2026-08-28): Next.js 16 App Router, wagmi v2 + viem, typed
+      hooks generated from `@miro/shared`'s ABIs via `@wagmi/cli`, React Hook Form + Zod
+      forms, dashboard (`scoreOf`) + `/pool` (PassportPool actions). No RainbowKit --
+      its default wallet list statically pulls in a connector whose dependency chain
+      doesn't resolve under Next 16 + Turbopack SSR; a small hand-rolled connect button on
+      wagmi's own hooks replaces it. See `apps/web/README.md`.
