@@ -1,6 +1,8 @@
 "use client";
 
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -19,22 +21,26 @@ export function ConnectButton() {
 
   if (isConnected && address) {
     return (
-      <div className="flex items-center gap-2 text-sm">
-        <select
-          className="rounded border border-black/15 bg-transparent px-2 py-1 dark:border-white/20"
-          value={chain?.id}
-          onChange={(e) => switchChain({ chainId: Number(e.target.value) })}
+      <div className="flex items-center gap-2">
+        <Select
+          value={chain ? String(chain.id) : undefined}
+          onValueChange={(value) => switchChain({ chainId: Number(value) })}
         >
-          {chains.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <span className="tabular-nums">{shortAddress(address)}</span>
-        <button type="button" onClick={() => disconnect()} className="underline underline-offset-4">
+          <SelectTrigger size="sm">
+            <SelectValue placeholder="Network" />
+          </SelectTrigger>
+          <SelectContent>
+            {chains.map((c) => (
+              <SelectItem key={c.id} value={String(c.id)}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-sm tabular-nums">{shortAddress(address)}</span>
+        <Button type="button" variant="ghost" size="sm" onClick={() => disconnect()}>
           Disconnect
-        </button>
+        </Button>
       </div>
     );
   }
@@ -42,15 +48,9 @@ export function ConnectButton() {
   return (
     <div className="flex gap-2">
       {connectors.map((connector) => (
-        <button
-          key={connector.uid}
-          type="button"
-          disabled={isPending}
-          onClick={() => connect({ connector })}
-          className="rounded bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
-        >
+        <Button key={connector.uid} type="button" disabled={isPending} onClick={() => connect({ connector })}>
           {connector.name}
-        </button>
+        </Button>
       ))}
     </div>
   );

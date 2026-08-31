@@ -8,6 +8,7 @@ import { DepositCollateralForm } from "@/components/forms/DepositCollateralForm"
 import { RepayForm } from "@/components/forms/RepayForm";
 import { WithdrawCollateralForm } from "@/components/forms/WithdrawCollateralForm";
 import { PoolPositionCard } from "@/components/PoolPositionCard";
+import { Button } from "@/components/ui/button";
 
 export default function PoolPage() {
   const { isConnected } = useAccount();
@@ -19,7 +20,7 @@ export default function PoolPage() {
         <ConnectButton />
       </div>
 
-      <p className="text-sm text-black/60 dark:text-white/60">
+      <p className="text-sm text-muted-foreground">
         Always over-collateralized (max 75% LTV) — a higher passport score raises the LTV
         cap, it never removes the collateral requirement. Repaying in full here also
         reports back into the same passport it reads from.
@@ -36,12 +37,10 @@ export default function PoolPage() {
           </div>
         </>
       ) : (
-        <p className="text-sm text-black/60 dark:text-white/60">Connect a wallet to interact with the pool.</p>
+        <p className="text-sm text-muted-foreground">Connect a wallet to interact with the pool.</p>
       )}
 
-      <Link href="/" className="text-sm font-medium underline underline-offset-4">
-        ← Back to passport
-      </Link>
+      <Button variant="link" className="w-fit p-0" render={<Link href="/">← Back to passport</Link>} />
     </main>
   );
 }

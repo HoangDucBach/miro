@@ -4,6 +4,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { parseUnits } from "viem";
 import { amountSchema, type AmountFormValues } from "@/schemas/forms";
+import { Button } from "@/components/ui/button";
+import { Field, FieldContent, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 interface AmountFormProps {
   label: string;
@@ -37,30 +40,20 @@ export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, 
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-2 rounded-lg border border-black/10 p-4 dark:border-white/15">
-      <label className="text-sm font-medium" htmlFor={`${label}-amount`}>
-        {label}
-      </label>
-      <div className="flex gap-2">
-        <input
-          id={`${label}-amount`}
-          type="number"
-          step="any"
-          placeholder="0.0"
-          className="w-full rounded border border-black/15 px-3 py-2 text-sm dark:border-white/20 dark:bg-transparent"
-          {...register("amount")}
-        />
-        <button
-          type="submit"
-          disabled={isPending}
-          className="shrink-0 rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
-        >
-          {isPending ? "Submitting…" : submitLabel}
-        </button>
-      </div>
-      {errors.amount && <p className="text-xs text-red-500">{errors.amount.message}</p>}
-      {error && <p className="text-xs text-red-500">{error.message}</p>}
-      {isConfirmed && <p className="text-xs text-green-600">Confirmed.</p>}
+    <form onSubmit={handleSubmit(submit)} className="rounded-xl border border-border p-4">
+      <Field data-invalid={Boolean(errors.amount) || undefined}>
+        <FieldLabel htmlFor={`${label}-amount`}>{label}</FieldLabel>
+        <div className="flex gap-2">
+          <FieldContent>
+            <Input id={`${label}-amount`} type="number" step="any" placeholder="0.0" {...register("amount")} />
+          </FieldContent>
+          <Button type="submit" disabled={isPending} className="shrink-0">
+            {isPending ? "Submitting…" : submitLabel}
+          </Button>
+        </div>
+        <FieldError errors={[errors.amount, error ? { message: error.message } : undefined]} />
+      </Field>
+      {isConfirmed && <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400">Confirmed.</p>}
     </form>
   );
 }
