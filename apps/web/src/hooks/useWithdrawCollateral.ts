@@ -1,5 +1,6 @@
 import { useWritePassportPoolWithdrawCollateral } from "@/generated";
 import { contracts } from "@/lib/contracts";
+import { cc3Testnet } from "@/lib/chains";
 import { useTransactionState } from "./useContractAction";
 
 export function useWithdrawCollateral() {
@@ -7,7 +8,7 @@ export function useWithdrawCollateral() {
   const state = useTransactionState(write);
 
   const withdraw = (amountWei: bigint) =>
-    write.writeContractAsync({ address: contracts.passportPool, args: [amountWei] });
+    write.writeContractAsync({ address: contracts.passportPool, chainId: cc3Testnet.id, args: [amountWei] });
 
   return { withdraw, ...state };
 }

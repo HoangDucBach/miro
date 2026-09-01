@@ -4,16 +4,23 @@ import type { Address } from "viem";
  * Single place that resolves deployed contract addresses from NEXT_PUBLIC_* env vars.
  * Every hook reads addresses through this module, never `process.env` directly -- so
  * there is exactly one place to update when a contract is redeployed.
+ *
+ * Each var is referenced **statically** (`process.env.NEXT_PUBLIC_X`, never
+ * `process.env[key]`): Next.js inlines public env vars into the client bundle by literal
+ * text substitution at build time, so a dynamic lookup compiles to `undefined` in the
+ * browser and every contract call silently targets a missing address.
  */
-function requirePublicEnv(key: string): Address {
-  const v = process.env[key];
-  if (!v) throw new Error(`missing required env var: ${key}`);
-  return v as Address;
+function required(value: string | undefined, name: string): Address {
+  if (!value) throw new Error(`missing required env var: ${name}`);
+  return value as Address;
 }
 
 export const contracts = {
-  creditPassport: requirePublicEnv("NEXT_PUBLIC_CREDIT_PASSPORT_CONTRACT"),
-  passportPool: requirePublicEnv("NEXT_PUBLIC_PASSPORT_POOL_CONTRACT"),
-  testUsdc: requirePublicEnv("NEXT_PUBLIC_TEST_USDC_CONTRACT"),
-  priceOracle: requirePublicEnv("NEXT_PUBLIC_PRICE_ORACLE_CONTRACT"),
+  creditPassport: required(
+    process.env.NEXT_PUBLIC_CREDIT_PASSPORT_CONTRACT,
+    "NEXT_PUBLIC_CREDIT_PASSPORT_CONTRACT",
+  ),
+  passportPool: required(process.env.NEXT_PUBLIC_PASSPORT_POOL_CONTRACT, "NEXT_PUBLIC_PASSPORT_POOL_CONTRACT"),
+  testUsdc: required(process.env.NEXT_PUBLIC_TEST_USDC_CONTRACT, "NEXT_PUBLIC_TEST_USDC_CONTRACT"),
+  priceOracle: required(process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT, "NEXT_PUBLIC_PRICE_ORACLE_CONTRACT"),
 } as const;

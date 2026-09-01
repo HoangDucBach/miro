@@ -8,11 +8,6 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-/**
- * Minimal wallet connect/chain-switch UI built directly on wagmi's own hooks, not a UI
- * library -- see src/lib/wagmi.ts for why RainbowKit was dropped. Small enough that
- * hand-rolling it is less code and less risk than pulling in a replacement dependency.
- */
 export function ConnectButton() {
   const { address, isConnected, chain } = useAccount();
   const { connect, connectors, isPending } = useConnect();

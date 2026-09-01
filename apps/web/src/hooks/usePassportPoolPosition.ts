@@ -1,16 +1,21 @@
 import { useAccount, useReadContracts } from "wagmi";
 import { passportPoolAbi } from "@/generated";
 import { contracts } from "@/lib/contracts";
+import { cc3Testnet } from "@/lib/chains";
 
 /**
  * A borrower's full PassportPool position in one round trip: `useReadContracts` batches
  * the four reads into a single multicall instead of four separate RPC requests, and this
  * is the one place that shape is assembled -- callers get a flat, ready-to-render object.
+ *
+ * PassportPool only exists on CC3 Testnet, so `chainId` is pinned per-call here too --
+ * same reasoning as usePassportScore: this must read correctly regardless of which chain
+ * the wallet is currently switched to (e.g. Sepolia, mid-Aave-transaction).
  */
 export function usePassportPoolPosition() {
   const { address } = useAccount();
 
-  const contractBase = { address: contracts.passportPool, abi: passportPoolAbi } as const;
+  const contractBase = { address: contracts.passportPool, abi: passportPoolAbi, chainId: cc3Testnet.id } as const;
   const { data, isLoading, refetch } = useReadContracts({
     contracts: address
       ? [

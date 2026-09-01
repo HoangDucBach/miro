@@ -35,8 +35,15 @@ export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, 
   } = useForm<AmountFormValues>({ resolver: zodResolver(amountSchema) });
 
   async function submit(values: AmountFormValues) {
-    await onSubmit(parseUnits(values.amount.toString(), decimals));
-    reset();
+    try {
+      await onSubmit(parseUnits(values.amount, decimals));
+      reset();
+    } catch {
+      // Wallet rejection / revert already surfaces through the `error` prop below, which
+      // the calling hook derives from wagmi's own state. Swallowing here keeps a declined
+      // signature from becoming an unhandled promise rejection, and leaves the entered
+      // amount in place so the user can retry without retyping.
+    }
   }
 
   return (
@@ -45,7 +52,7 @@ export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, 
         <FieldLabel htmlFor={`${label}-amount`}>{label}</FieldLabel>
         <div className="flex gap-2">
           <FieldContent>
-            <Input id={`${label}-amount`} type="number" step="any" placeholder="0.0" {...register("amount")} />
+            <Input id={`${label}-amount`} inputMode="decimal" placeholder="0.0" {...register("amount")} />
           </FieldContent>
           <Button type="submit" disabled={isPending} className="shrink-0">
             {isPending ? "Submitting…" : submitLabel}
