@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { linkVariants } from "@heroui/styles";
+import NextLink from "next/link";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@/components/ConnectButton";
 import { BorrowForm } from "@/components/forms/BorrowForm";
@@ -8,10 +9,10 @@ import { DepositCollateralForm } from "@/components/forms/DepositCollateralForm"
 import { RepayForm } from "@/components/forms/RepayForm";
 import { WithdrawCollateralForm } from "@/components/forms/WithdrawCollateralForm";
 import { PoolPositionCard } from "@/components/PoolPositionCard";
-import { Button } from "@/components/ui/button";
 
 export default function PoolPage() {
   const { isConnected } = useAccount();
+  const link = linkVariants();
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
@@ -20,7 +21,7 @@ export default function PoolPage() {
         <ConnectButton />
       </div>
 
-      <p className="text-sm text-muted-foreground">
+      <p className="text-muted text-sm">
         Always over-collateralized (max 75% LTV) — a higher passport score raises the LTV
         cap, it never removes the collateral requirement. Repaying in full here also
         reports back into the same passport it reads from.
@@ -37,10 +38,12 @@ export default function PoolPage() {
           </div>
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">Connect a wallet to interact with the pool.</p>
+        <p className="text-muted text-sm">Connect a wallet to interact with the pool.</p>
       )}
 
-      <Button variant="link" className="w-fit p-0" render={<Link href="/">← Back to passport</Link>} />
+      <NextLink className={`${link.base()} w-fit`} href="/">
+        Back to passport
+      </NextLink>
     </main>
   );
 }

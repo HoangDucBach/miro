@@ -1,12 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { Button, FieldError, Input, Label, Spinner, TextField } from "@heroui/react";
+import { Controller, useForm } from "react-hook-form";
 import { parseUnits } from "viem";
 import { amountSchema, type AmountFormValues } from "@/schemas/forms";
-import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 
 interface AmountFormProps {
   label: string;
@@ -25,14 +23,18 @@ interface AmountFormProps {
  * validation, and pending/confirmed/error feedback. Deposit, withdraw, borrow, and repay
  * are all this component with a different label/decimals/submit handler (DRY) rather than
  * four near-identical forms.
+ *
+ * HeroUI's TextField owns its own value/onChange (React Aria), so the field goes through
+ * react-hook-form's `Controller` rather than `register()` -- `register`'s ref/onChange
+ * contract assumes a plain DOM input.
  */
 export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, isConfirmed, error }: AmountFormProps) {
   const {
-    register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<AmountFormValues>({ resolver: zodResolver(amountSchema) });
+  } = useForm<AmountFormValues>({ resolver: zodResolver(amountSchema), defaultValues: { amount: "" } });
 
   async function submit(values: AmountFormValues) {
     try {
@@ -46,21 +48,34 @@ export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, 
     }
   }
 
+  const message = errors.amount?.message ?? error?.message;
+
   return (
-    <form onSubmit={handleSubmit(submit)} className="rounded-xl border border-border p-4">
-      <Field data-invalid={Boolean(errors.amount) || undefined}>
-        <FieldLabel htmlFor={`${label}-amount`}>{label}</FieldLabel>
-        <div className="flex gap-2">
-          <FieldContent>
-            <Input id={`${label}-amount`} inputMode="decimal" placeholder="0.0" {...register("amount")} />
-          </FieldContent>
-          <Button type="submit" disabled={isPending} className="shrink-0">
-            {isPending ? "Submitting…" : submitLabel}
-          </Button>
-        </div>
-        <FieldError errors={[errors.amount, error ? { message: error.message } : undefined]} />
-      </Field>
-      {isConfirmed && <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400">Confirmed.</p>}
+    <form className="border-default rounded-xl border p-4" onSubmit={handleSubmit(submit)}>
+      <Controller
+        control={control}
+        name="amount"
+        render={({ field }) => (
+          <TextField
+            isInvalid={Boolean(message)}
+            name={field.name}
+            value={field.value}
+            onBlur={field.onBlur}
+            onChange={field.onChange}
+          >
+            <Label>{label}</Label>
+            <div className="flex gap-2">
+              <Input className="flex-1" inputMode="decimal" placeholder="0.0" ref={field.ref} />
+              <Button className="shrink-0" isPending={isPending} type="submit">
+                {isPending ? <Spinner color="current" size="sm" /> : null}
+                {isPending ? "Submitting…" : submitLabel}
+              </Button>
+            </div>
+            {message ? <FieldError>{message}</FieldError> : null}
+          </TextField>
+        )}
+      />
+      {isConfirmed ? <p className="text-success mt-2 text-sm">Confirmed.</p> : null}
     </form>
   );
 }

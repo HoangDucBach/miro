@@ -1,8 +1,8 @@
 "use client";
 
+import { Card } from "@heroui/react";
 import { useAccount } from "wagmi";
 import { usePassportScore } from "@/hooks/usePassportScore";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ScoreCard() {
   const { isConnected } = useAccount();
@@ -11,24 +11,24 @@ export function ScoreCard() {
   if (!isConnected) {
     return (
       <Card>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Connect a wallet to see your credit passport.</p>
-        </CardContent>
+        <Card.Header>
+          <Card.Description>Connect a wallet to see your credit passport.</Card.Description>
+        </Card.Header>
       </Card>
     );
   }
 
   return (
     <Card>
-      <CardHeader>
-        <CardDescription>Credit passport score</CardDescription>
-        <CardTitle className="text-4xl font-semibold tabular-nums">{isLoading ? "…" : score.toString()}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-xs text-muted-foreground">
+      <Card.Header>
+        <Card.Description>Credit passport score</Card.Description>
+        <Card.Title className="text-4xl font-semibold tabular-nums">
+          {isLoading ? "…" : score.toString()}
+        </Card.Title>
+        <Card.Description>
           Aggregate only — attested repayments across every registered source, not a per-source breakdown.
-        </p>
-      </CardContent>
+        </Card.Description>
+      </Card.Header>
     </Card>
   );
 }
