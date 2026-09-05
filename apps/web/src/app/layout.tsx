@@ -23,8 +23,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     // HeroUI reads the theme from both the class and `data-theme`; it needs both set.
     <html
       lang="en"
-      className={`light ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      data-theme="light"
+      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme="dark"
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <Providers>{children}</Providers>

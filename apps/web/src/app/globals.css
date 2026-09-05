@@ -4,8 +4,8 @@
 /**
  * Theme generated from heroui.com/themes:
  *   lightness 0.5182 · chroma 0.2289 · hue 277.05 · radius small
- * Only the accent, the dark background and the radius are overridden -- everything
- * else stays on HeroUI's defaults, which already handle light/dark switching.
+ * Light mode overrides the accent only. Dark mode -- the app's default, set on <html>
+ * in layout.tsx -- additionally neutralises HeroUI's grey ramp; see the note below.
  */
 @layer base {
   :root {
@@ -23,11 +23,28 @@
     /* Lifted lightness so the same hue stays legible on a dark ground. */
     --accent: oklch(0.72 0.18 277.05);
     --accent-foreground: oklch(0.18 0.02 277.05);
-    /* Neutral greys instead of HeroUI's slightly blue-tinted dark defaults.
-     * --background's -secondary/-tertiary steps are color-mixed from it, as are
-     * --surface-hover, the separators and --border-secondary/-tertiary, so those
-     * all follow. --surface is v3's rename of what v2 called content1. */
-    --background: #131313;
-    --surface: #191919;
+
+    /* Neutral greys. Every dark default HeroUI ships carries a slight blue-violet cast
+     * (chroma .002-.015 around hue 286, and --surface-tertiary at hue 248, bluer still),
+     * which reads cold beside the purple accent. Each value below keeps HeroUI's own
+     * lightness and only drops chroma to 0, so the elevation hierarchy is untouched --
+     * only the cast changes.
+     *
+     * Restating this many is necessary: --background-secondary/-tertiary and
+     * --surface-hover do resolve to var(--background)/var(--surface), and the
+     * -secondary/-tertiary steps of border and separator color-mix from --surface, but
+     * --border, --separator, --default, --muted, --overlay, --field-background, --segment
+     * and both --surface-* steps are hard-coded per theme and have to be restated. */
+    --background: oklch(18.67% 0 0);
+    --surface: oklch(21.34% 0 0);
+    --surface-secondary: oklch(25.7% 0 0);
+    --surface-tertiary: oklch(27.21% 0 0);
+    --overlay: oklch(21.03% 0 0);
+    --field-background: oklch(21.03% 0 0);
+    --default: oklch(27.4% 0 0);
+    --border: oklch(28% 0 0);
+    --separator: oklch(25% 0 0);
+    --segment: oklch(39.64% 0 0);
+    --muted: oklch(70.5% 0 0);
   }
 }
