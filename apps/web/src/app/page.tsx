@@ -1,33 +1,55 @@
-import { Link } from "@heroui/react";
-import { linkVariants } from "@heroui/styles";
+import { buttonVariants } from "@heroui/styles";
+import Image from "next/image";
 import NextLink from "next/link";
-import { ConnectButton } from "@/components/ConnectButton";
-import { ScoreCard } from "@/components/ScoreCard";
 
-export default function Home() {
-  // HeroUI's own <Link render={...}> types its render props against a span, which a
-  // Next.js <Link> (an anchor) can't satisfy. The documented way to combine the two is
-  // to style NextLink with the variant slots instead.
-  const link = linkVariants();
-
+/**
+ * Placeholder landing page. Deliberately has no wallet connect: this is the public
+ * entry point, and the dashboard behind /dashboard is where an address is needed.
+ */
+export default function LandingPage() {
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Miro — Credit Passport</h1>
-        <ConnectButton />
-      </div>
+    <main className="relative flex min-h-dvh flex-1 flex-col items-center justify-center overflow-hidden px-6 text-center">
+      {/* Both images are decoration -- empty alt plus aria-hidden keeps them out of the
+          accessibility tree rather than announcing a filename. */}
+      <Image
+        src="/landing-bg-glow.png"
+        alt=""
+        aria-hidden
+        fill
+        priority
+        sizes="100vw"
+        className="pointer-events-none -z-10 object-cover"
+      />
+      <Image
+        src="/landing-many-circles.png"
+        alt=""
+        aria-hidden
+        width={2254}
+        height={1664}
+        sizes="(min-width: 768px) 70vw, 120vw"
+        className="pointer-events-none absolute -top-1/3 -right-1/4 -z-10 w-[120%] max-w-none opacity-70 md:w-[70%]"
+      />
 
-      <p className="text-muted text-sm">
-        Real repayments on real lending protocols get attested onto Creditcoin via the
-        Attestcoin Protocol — no bridge, no oracle operator. This is your portable score.
+      <p className="text-muted text-xs font-medium tracking-[0.2em] uppercase">
+        Attestcoin Protocol
       </p>
 
-      <ScoreCard />
+      <h1 className="mt-4 max-w-3xl text-4xl font-semibold text-balance sm:text-6xl">
+        Your credit history, portable across chains
+      </h1>
 
-      <NextLink className={`${link.base()} w-fit`} href="/pool">
-        Go to PassportPool
-        <Link.Icon className={link.icon()} />
+      <p className="text-muted mt-6 max-w-xl text-base text-pretty">
+        Real repayments on real lending protocols get attested onto Creditcoin — no bridge,
+        no oracle operator. One passport your borrowing history follows you into.
+      </p>
+
+      <NextLink className={`${buttonVariants({ size: "lg" })} mt-10`} href="/dashboard">
+        Open dashboard
       </NextLink>
+
+      <p className="text-muted mt-16 text-xs">
+        Placeholder — final copy and visuals pending.
+      </p>
     </main>
   );
 }
