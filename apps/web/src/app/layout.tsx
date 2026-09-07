@@ -14,8 +14,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Miro — Credit Passport",
-  description: "A portable, cross-chain credit score attested via the Attestcoin Protocol.",
+  // The template applies to nested pages that set their own title; the landing keeps the
+  // absolute form, since "Miro — Miro" would be the alternative.
+  title: {
+    default: "Miro — Your credit, everywhere you've earned it",
+    template: "%s — Miro",
+  },
+  description:
+    "Deposit, borrow, repay, or lend. Every action builds a portable credit passport, " +
+    "attested on Creditcoin via the Passport Protocol — no bridge, no oracle operator.",
+  applicationName: "Miro Protocol",
+  openGraph: {
+    type: "website",
+    siteName: "Miro Protocol",
+    title: "Miro — Your credit, everywhere you've earned it",
+    description:
+      "A portable, cross-chain credit passport built from real repayments on real lending protocols.",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

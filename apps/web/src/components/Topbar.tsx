@@ -2,9 +2,8 @@
 
 import { Button, Drawer, useOverlayState } from "@heroui/react";
 import { Menu } from "lucide-react";
-import NextLink from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
-import { NavLinks } from "@/components/Sidebar";
+import { BrandMark, NavLinks } from "@/components/Sidebar";
 
 /**
  * The wallet controls live here rather than in the rail: connected, ConnectButton is a
@@ -21,9 +20,7 @@ export function Topbar() {
         <Button aria-label="Open navigation" size="sm" variant="ghost" onPress={drawer.open}>
           <Menu className="size-4" />
         </Button>
-        <NextLink href="/" className="text-sm font-semibold">
-          Miro
-        </NextLink>
+        <BrandMark className="h-5" />
       </div>
 
       <div className="ml-auto">
@@ -35,7 +32,9 @@ export function Topbar() {
           <Drawer.Dialog>
             <Drawer.CloseTrigger />
             <Drawer.Header>
-              <Drawer.Heading>Navigation</Drawer.Heading>
+              <Drawer.Heading>
+                <BrandMark className="h-5" />
+              </Drawer.Heading>
             </Drawer.Header>
             <Drawer.Body>
               {/* Without closing on navigate the drawer stays open over the page it just

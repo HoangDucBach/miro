@@ -1,5 +1,6 @@
 "use client";
 
+import { Typography } from "@heroui/react";
 import { useAccount } from "wagmi";
 import { BorrowForm } from "@/components/forms/BorrowForm";
 import { DepositCollateralForm } from "@/components/forms/DepositCollateralForm";
@@ -12,13 +13,13 @@ export default function PoolPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
-      <h1 className="text-xl font-semibold">PassportPool</h1>
+      <Typography type="h3">PassportPool</Typography>
 
-      <p className="text-muted text-sm">
+      <Typography type="body-sm" color="muted">
         Always over-collateralized (max 75% LTV) — a higher passport score raises the LTV
         cap, it never removes the collateral requirement. Repaying in full here also
         reports back into the same passport it reads from.
-      </p>
+      </Typography>
 
       {isConnected ? (
         <>
@@ -31,7 +32,9 @@ export default function PoolPage() {
           </div>
         </>
       ) : (
-        <p className="text-muted text-sm">Connect a wallet to interact with the pool.</p>
+        <Typography type="body-sm" color="muted">
+          Connect a wallet to interact with the pool.
+        </Typography>
       )}
     </main>
   );
