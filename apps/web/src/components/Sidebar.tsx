@@ -143,7 +143,7 @@ export function Sidebar() {
         isCollapsed ? "w-[68px]" : "w-60"
       }`}
     >
-      <div className="border-default bg-surface flex h-[40dvh] w-full flex-col gap-6 rounded-3xl border p-3">
+      <div className="border-default flex h-[40dvh] w-full flex-col gap-6 rounded-3xl border p-3">
         <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : "justify-between"}`}>
           {/* The rail shows the mark alone -- at 68px collapsed there is no room for the
            * wordmark, and swapping assets mid-transition would flicker. */}

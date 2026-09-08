@@ -83,9 +83,13 @@ export default function PoolPage() {
       <Typography type="h2">All pools</Typography>
 
       {isConnected ? (
-        <Card>
-          {/* Card.Header stacks its children by default; the reference puts the debt and
-              the stats on one line, so the row direction is set explicitly. */}
+        <Card className="border-default border border-solid" variant="transparent">
+          {/* transparent + an explicit border: .card--transparent sets border-style:none,
+              so border-solid must be named or the width renders nothing.
+
+              Card.Header stacks its children by default; the reference puts the debt and
+              its children by default, and the reference puts the debt and the stats on
+              one line, so the row direction is set explicitly too. */}
           <Card.Header className="flex w-full flex-row flex-wrap items-end justify-between gap-6">
             <div>
               <p className="text-accent text-4xl font-semibold tabular-nums">
@@ -214,7 +218,7 @@ export default function PoolPage() {
           </Card.Content>
         </Card>
       ) : (
-        <Card>
+        <Card className="border-default border border-solid" variant="transparent">
           <Card.Header>
             <Card.Description>Connect a wallet to interact with the pool.</Card.Description>
           </Card.Header>

@@ -10,7 +10,7 @@ export function ScoreCard() {
 
   if (!isConnected) {
     return (
-      <Card>
+      <Card className="border-default border border-solid" variant="transparent">
         <Card.Header>
           <Card.Description>Connect a wallet to see your credit passport.</Card.Description>
         </Card.Header>
@@ -22,7 +22,10 @@ export function ScoreCard() {
     // HeroUI's media-card shape: a tight outer padding wrapping a rounded block, with the
     // copy below it. `.card` ships p-4, which would leave the block floating in a wide
     // margin, so the padding is pulled in and the text gets its own instead.
-    <Card className="max-w-sm gap-3 overflow-hidden p-2">
+    <Card
+      className="border-default max-w-sm gap-3 overflow-hidden border border-solid p-2"
+      variant="transparent"
+    >
       {/* Stands in for a cover image. Brighter than the card ground on purpose, so it
        * reads as a banner rather than as more surface. */}
       <div
