@@ -1,11 +1,13 @@
 "use client";
 
-import { Card, Chip, Meter, Separator, Tabs, Typography } from "@heroui/react";
+import { Card, Chip, Meter, Separator, Typography } from "@heroui/react";
 import { AltArrowLeftIcon } from "@solar-icons/react/linear/alt-arrow-left";
 import { RefreshIcon } from "@solar-icons/react/linear/refresh";
 import NextLink from "next/link";
+import { Suspense } from "react";
 import { useAccount } from "wagmi";
 import { ActionModal } from "@/components/pool/ActionModal";
+import { PositionTabs } from "@/components/pool/PositionTabs";
 import { useBorrow } from "@/hooks/useBorrow";
 import { useDepositCollateral } from "@/hooks/useDepositCollateral";
 import { usePassportPoolPosition } from "@/hooks/usePassportPoolPosition";
@@ -139,82 +141,76 @@ export default function PoolPage() {
               </div>
             </div>
 
-            <Tabs>
-              <Tabs.ListContainer className="w-fit">
-                <Tabs.List aria-label="Position">
-                  <Tabs.Tab id="collateral">
-                    Collateral
-                    <Tabs.Indicator />
-                  </Tabs.Tab>
-                  <Tabs.Tab id="loan">
-                    Loan
-                    <Tabs.Indicator />
-                  </Tabs.Tab>
-                </Tabs.List>
-              </Tabs.ListContainer>
-
-              <Tabs.Panel className="pt-4" id="collateral">
-                <PositionPanel
-                  balance={`${formatAmount(collateral, COLLATERAL_DECIMALS)} tCTC`}
-                  headroom={`${formatAmount(withdrawableCollateral(collateral, debt, creditLimit), COLLATERAL_DECIMALS)} tCTC`}
-                  headroomLabel="Withdrawable"
-                  actions={
-                    <>
-                      <ActionModal
-                        action="Withdraw"
-                        decimals={COLLATERAL_DECIMALS}
-                        error={withdraw.error}
-                        fieldLabel="Amount to withdraw (tCTC)"
-                        isConfirmed={withdraw.isConfirmed}
-                        isPending={withdraw.isPending}
-                        onSubmit={withdraw.withdraw}
-                        variant="outline"
-                      />
-                      <ActionModal
-                        action="Deposit"
-                        decimals={COLLATERAL_DECIMALS}
-                        error={deposit.error}
-                        fieldLabel="Amount to deposit (tCTC)"
-                        isConfirmed={deposit.isConfirmed}
-                        isPending={deposit.isPending}
-                        onSubmit={deposit.deposit}
-                      />
-                    </>
-                  }
-                />
-              </Tabs.Panel>
-
-              <Tabs.Panel className="pt-4" id="loan">
-                <PositionPanel
-                  balance={`${formatAmount(debt, DEBT_DECIMALS, 2)} tUSDC`}
-                  headroom={`${formatAmount(borrowable(debt, creditLimit), DEBT_DECIMALS, 2)} tUSDC`}
-                  headroomLabel="Borrowable"
-                  actions={
-                    <>
-                      <ActionModal
-                        action="Repay"
-                        decimals={DEBT_DECIMALS}
-                        error={repay.error}
-                        fieldLabel="Amount to repay (tUSDC)"
-                        isConfirmed={repay.isConfirmed}
-                        isPending={repay.isPending}
-                        onSubmit={repay.repay}
-                        variant="outline"
-                      />
-                      <ActionModal
-                        action="Borrow"
-                        decimals={DEBT_DECIMALS}
-                        error={borrow.error}
-                        fieldLabel="Amount to borrow (tUSDC)"
-                        isConfirmed={borrow.isConfirmed}
-                        isPending={borrow.isPending}
-                        onSubmit={borrow.borrow}
-                      />
-                    </>
-                  }
-                />
-              </Tabs.Panel>
-            </Tabs>
+            {/* Suspense is required, not decorative: useSearchParams on a prerendered
+             * route makes the tree up to the nearest boundary client-rendered, and a
+             * production build fails outright without one. */}
+            <Suspense fallback={<div className="h-72" />}>
+              <PositionTabs
+                collateral={
+                  <PositionPanel
+                    balance={`${formatAmount(collateral, COLLATERAL_DECIMALS)} tCTC`}
+                    headroom={`${formatAmount(withdrawableCollateral(collateral, debt, creditLimit), COLLATERAL_DECIMALS)} tCTC`}
+                    headroomLabel="Withdrawable"
+                    actions={
+                      <>
+                        <ActionModal
+                          action="Withdraw"
+                          decimals={COLLATERAL_DECIMALS}
+                          error={withdraw.error}
+                          fieldLabel="Amount to withdraw (tCTC)"
+                          isConfirmed={withdraw.isConfirmed}
+                          isPending={withdraw.isPending}
+                          onSubmit={withdraw.withdraw}
+                          variant="outline"
+                        />
+                        <ActionModal
+                          action="Deposit"
+                          decimals={COLLATERAL_DECIMALS}
+                          error={deposit.error}
+                          fieldLabel="Amount to deposit (tCTC)"
+                          isConfirmed={deposit.isConfirmed}
+                          isPending={deposit.isPending}
+                          onSubmit={deposit.deposit}
+                        />
+                      </>
+                    }
+                  />
+                }
+                loan={
+                  <PositionPanel
+                    balance={`${formatAmount(debt, DEBT_DECIMALS, 2)} tUSDC`}
+                    headroom={`${formatAmount(borrowable(debt, creditLimit), DEBT_DECIMALS, 2)} tUSDC`}
+                    headroomLabel="Borrowable"
+                    actions={
+                      <>
+                        {/* "Approve and Repay" rather than "Repay": useRepay sends an
+                         * ERC-20 approval first when the allowance is short, so the
+                         * wallet may prompt twice. */}
+                        <ActionModal
+                          action="Approve and Repay"
+                          decimals={DEBT_DECIMALS}
+                          error={repay.error}
+                          fieldLabel="Amount to repay (tUSDC)"
+                          isConfirmed={repay.isConfirmed}
+                          isPending={repay.isPending}
+                          onSubmit={repay.repay}
+                          variant="outline"
+                        />
+                        <ActionModal
+                          action="Borrow"
+                          decimals={DEBT_DECIMALS}
+                          error={borrow.error}
+                          fieldLabel="Amount to borrow (tUSDC)"
+                          isConfirmed={borrow.isConfirmed}
+                          isPending={borrow.isPending}
+                          onSubmit={borrow.borrow}
+                        />
+                      </>
+                    }
+                  />
+                }
+              />
+            </Suspense>
           </Card.Content>
         </Card>
       ) : (
