@@ -61,13 +61,13 @@ function PositionPanel({
 
 export default function PoolPage() {
   const { isConnected } = useAccount();
-  const { collateral, debt, creditLimit, maxLtvBps } = usePassportPoolPosition();
+  const { collateral, debt, creditLimit, maxLtvBps, collateralValue } = usePassportPoolPosition();
   const deposit = useDepositCollateral();
   const withdraw = useWithdrawCollateral();
   const borrow = useBorrow();
   const repay = useRepay();
 
-  const ltv = ltvBps(debt, creditLimit, maxLtvBps);
+  const ltv = ltvBps(debt, collateralValue);
   const risk = riskLevel(ltv, maxLtvBps);
 
   return (

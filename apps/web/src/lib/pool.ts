@@ -1,23 +1,16 @@
 import { formatUnits } from "viem";
 
 /**
- * PassportPool never exposes the USD value of a borrower's collateral, so nothing here can
- * ask for it. What it does expose is `creditLimit`, which the contract derives as
- * collateralValue * maxLtvBps / 10000. Every figure below is recovered from that identity
- * instead of from a price feed, which keeps this consistent with the contract by
- * construction -- if the pool re-prices collateral, these move with it.
+ * All of these read off values the pool computes itself, never a price feed of our own, so
+ * a re-pricing of collateral moves them without any change here. `collateralValue` is
+ * already denominated in the debt asset (the contract rescales it to debtDecimals), so it
+ * divides against `debt` directly.
  */
 
-/**
- * Current loan-to-value, in basis points.
- *
- *   ltv = debt / collateralValue
- *       = debt / (creditLimit * 10000 / maxLtvBps)
- *   ltvBps = debt * maxLtvBps / creditLimit
- */
-export function ltvBps(debt: bigint, creditLimit: bigint, maxLtvBps: bigint): bigint {
-  if (creditLimit === 0n) return 0n;
-  return (debt * maxLtvBps) / creditLimit;
+/** Current loan-to-value, in basis points: debt over the pool's own valuation of collateral. */
+export function ltvBps(debt: bigint, collateralValue: bigint): bigint {
+  if (collateralValue === 0n) return 0n;
+  return (debt * 10_000n) / collateralValue;
 }
 
 /**

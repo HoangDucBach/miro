@@ -5,7 +5,7 @@ import { cc3Testnet } from "@/lib/chains";
 
 /**
  * A borrower's full PassportPool position in one round trip: `useReadContracts` batches
- * the four reads into a single multicall instead of four separate RPC requests, and this
+ * the reads into a single multicall instead of one RPC request each, and this
  * is the one place that shape is assembled -- callers get a flat, ready-to-render object.
  *
  * PassportPool only exists on CC3 Testnet, so `chainId` is pinned per-call here too --
@@ -23,18 +23,21 @@ export function usePassportPoolPosition() {
           { ...contractBase, functionName: "debt", args: [address] },
           { ...contractBase, functionName: "creditLimit", args: [address] },
           { ...contractBase, functionName: "maxLtvBps", args: [address] },
+          { ...contractBase, functionName: "collateralValue", args: [address] },
         ]
       : undefined,
     query: { enabled: Boolean(address) },
   });
 
-  const [collateral, debt, creditLimit, maxLtvBps] = data ?? [];
+  const [collateral, debt, creditLimit, maxLtvBps, collateralValue] = data ?? [];
 
   return {
     collateral: (collateral?.result as bigint | undefined) ?? 0n,
     debt: (debt?.result as bigint | undefined) ?? 0n,
     creditLimit: (creditLimit?.result as bigint | undefined) ?? 0n,
     maxLtvBps: (maxLtvBps?.result as bigint | undefined) ?? 0n,
+    /** Collateral priced in the debt asset by the pool's own oracle, not by us. */
+    collateralValue: (collateralValue?.result as bigint | undefined) ?? 0n,
     isLoading,
     // Wrapped rather than returned directly: useReadContracts' refetch carries an
     // inferred type tied to @wagmi/core's internals that isn't safely nameable outside
