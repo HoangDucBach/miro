@@ -13,7 +13,7 @@ export function SourceBreakdown() {
   const credited = sources.filter((s) => s.count > 0n).length;
 
   return (
-    <Card className="border-default max-w-md border border-solid shadow-panel" variant="transparent">
+    <Card className="border-default w-full border border-solid shadow-panel" variant="transparent">
       <Card.Header>
         <Card.Title>Sources</Card.Title>
         <Card.Description>
