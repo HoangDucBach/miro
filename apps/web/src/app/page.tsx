@@ -16,7 +16,7 @@ export default function LandingPage() {
        * from announcing a filename. They are authored on a light ground, so on the dark
        * default the glow reads as a warm haze rather than the bloom in the mockup. */}
       <Image
-        src="/landing-bg-glow.png"
+        src="/landing-bg-glow.webp"
         alt=""
         aria-hidden
         fill
@@ -25,7 +25,7 @@ export default function LandingPage() {
         className="pointer-events-none -z-10 object-cover"
       />
       <Image
-        src="/landing-many-circles.png"
+        src="/landing-many-circles.webp"
         alt=""
         aria-hidden
         width={2254}
@@ -70,7 +70,7 @@ export default function LandingPage() {
         {/* Decoration, so empty alt plus aria-hidden. Hidden below `md`, where the
          * viewport is short enough that it would push the CTA off-screen. */}
         <Image
-          src="/coin-3d.png"
+          src="/coin-3d.webp"
           alt=""
           aria-hidden
           width={800}

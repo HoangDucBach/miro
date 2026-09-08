@@ -15,7 +15,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           fill
           priority
           sizes="100vw"
-          src="/dashboard-bg.png"
+          src="/dashboard-bg.webp"
         />
       </div>
 
