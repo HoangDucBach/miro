@@ -1,6 +1,7 @@
 import { Typography } from "@heroui/react";
 import type { Metadata } from "next";
 import { ScoreCard } from "@/components/ScoreCard";
+import { SourceBreakdown } from "@/components/SourceBreakdown";
 
 export const metadata: Metadata = { title: "Passport" };
 
@@ -15,6 +16,7 @@ export default function DashboardPage() {
       </Typography>
 
       <ScoreCard />
+      <SourceBreakdown />
     </main>
   );
 }

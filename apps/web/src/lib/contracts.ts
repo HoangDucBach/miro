@@ -15,6 +15,16 @@ function required(value: string | undefined, name: string): Address {
   return value as Address;
 }
 
+/**
+ * Block the passport was deployed at. Optional: without it the source registry is scanned
+ * over a recent window instead, which finds sources registered lately but can miss the
+ * original ones. See usePassportSources.
+ */
+export const creditPassportDeployBlock: bigint | null = process.env
+  .NEXT_PUBLIC_CREDIT_PASSPORT_DEPLOY_BLOCK
+  ? BigInt(process.env.NEXT_PUBLIC_CREDIT_PASSPORT_DEPLOY_BLOCK)
+  : null;
+
 export const contracts = {
   creditPassport: required(
     process.env.NEXT_PUBLIC_CREDIT_PASSPORT_CONTRACT,
