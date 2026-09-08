@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, Button, Tooltip } from "@heroui/react";
+import { Loadable } from "@/components/ui/Loadable";
 import { Logout2Icon } from "@solar-icons/react/linear/logout-2";
 import { UserIcon } from "@solar-icons/react/linear/user";
 import { useAccount, useDisconnect } from "wagmi";
@@ -73,9 +74,11 @@ export function SidebarProfile({ isCollapsed = false }: { isCollapsed?: boolean 
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-muted text-xs">Score</span>
-          <span className="text-accent text-xs font-medium tabular-nums">
-            {isLoading ? "…" : score.toString()}
-          </span>
+          <Loadable className="h-3.5 w-8 rounded" isLoading={isLoading}>
+            <span className="text-accent text-xs font-medium tabular-nums">
+              {score.toString()}
+            </span>
+          </Loadable>
         </div>
       </div>
     </div>

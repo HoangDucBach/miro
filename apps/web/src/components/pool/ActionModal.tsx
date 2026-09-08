@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Modal, useOverlayState } from "@heroui/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AmountForm } from "@/components/forms/AmountForm";
 
 interface ActionModalProps {
@@ -33,17 +33,30 @@ export function ActionModal({
   variant = "primary",
 }: ActionModalProps) {
   const modal = useOverlayState();
-  const { close } = modal;
+  const { close, open } = modal;
+
+  // isConfirmed comes from the transaction receipt and stays true for the life of that
+  // hash, so on its own it would mark a freshly reopened form as already confirmed --
+  // telling the user an action they have not taken yet succeeded. Only a submission made
+  // since this modal was opened counts.
+  const [submittedHere, setSubmittedHere] = useState(false);
+  const confirmedHere = isConfirmed && submittedHere;
 
   // Leaving it open on success would show a confirmed form over a position that has
   // already updated behind it.
   useEffect(() => {
-    if (isConfirmed) close();
-  }, [isConfirmed, close]);
+    if (confirmedHere) close();
+  }, [confirmedHere, close]);
 
   return (
     <>
-      <Button variant={variant} onPress={modal.open}>
+      <Button
+        variant={variant}
+        onPress={() => {
+          setSubmittedHere(false);
+          open();
+        }}
+      >
         {action}
       </Button>
 
@@ -58,10 +71,13 @@ export function ActionModal({
               <AmountForm
                 decimals={decimals}
                 error={error}
-                isConfirmed={isConfirmed}
+                isConfirmed={confirmedHere}
                 isPending={isPending}
                 label={fieldLabel}
-                onSubmit={onSubmit}
+                onSubmit={(amount) => {
+                  setSubmittedHere(true);
+                  return onSubmit(amount);
+                }}
                 submitLabel={action}
               />
             </Modal.Body>

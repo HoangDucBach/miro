@@ -8,6 +8,8 @@ import { Suspense } from "react";
 import { useAccount } from "wagmi";
 import { FaucetButton } from "@/components/FaucetButton";
 import { ActionModal } from "@/components/pool/ActionModal";
+import { Loadable } from "@/components/ui/Loadable";
+import { FadeIn } from "@/components/ui/FadeIn";
 import { PositionTabs } from "@/components/pool/PositionTabs";
 import { useBorrow } from "@/hooks/useBorrow";
 import { useDepositCollateral } from "@/hooks/useDepositCollateral";
@@ -26,10 +28,12 @@ import {
 const COLLATERAL_DECIMALS = 18; // tCTC
 const DEBT_DECIMALS = 6; // tUSDC
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, isLoading }: { label: string; value: string; isLoading: boolean }) {
   return (
-    <div className="text-right">
-      <p className="text-lg font-medium tabular-nums">{value}</p>
+    <div className="flex flex-col items-end text-right">
+      <Loadable className="h-6 w-16 rounded" isLoading={isLoading}>
+        <p className="text-lg font-medium tabular-nums">{value}</p>
+      </Loadable>
       <p className="text-muted text-sm">{label}</p>
     </div>
   );
@@ -41,19 +45,27 @@ function PositionPanel({
   headroom,
   headroomLabel,
   actions,
+  isLoading,
 }: {
   balance: string;
   headroom: string;
   headroomLabel: string;
   actions: React.ReactNode;
+  isLoading: boolean;
 }) {
   return (
     <div className="bg-surface-secondary flex flex-col gap-6 rounded-2xl p-6">
       <div>
-        <p className="text-3xl font-semibold tabular-nums sm:text-4xl">{balance}</p>
-        <p className="text-muted mt-2 text-sm">
-          {headroomLabel} <span className="text-accent tabular-nums">{headroom}</span>
-        </p>
+        <Loadable className="h-9 w-56 rounded-xl sm:h-10" isLoading={isLoading}>
+          <p className="text-3xl font-semibold tabular-nums sm:text-4xl">{balance}</p>
+        </Loadable>
+        <div className="mt-2">
+          <Loadable className="h-5 w-44 rounded" isLoading={isLoading}>
+            <p className="text-muted text-sm">
+              {headroomLabel} <span className="text-accent tabular-nums">{headroom}</span>
+            </p>
+          </Loadable>
+        </div>
       </div>
       <div className="flex flex-wrap justify-end gap-3">{actions}</div>
     </div>
@@ -62,7 +74,8 @@ function PositionPanel({
 
 export default function PoolPage() {
   const { isConnected } = useAccount();
-  const { collateral, debt, creditLimit, maxLtvBps, collateralValue } = usePassportPoolPosition();
+  const { collateral, debt, creditLimit, maxLtvBps, collateralValue, isLoading } =
+    usePassportPoolPosition();
   const deposit = useDepositCollateral();
   const withdraw = useWithdrawCollateral();
   const borrow = useBorrow();
@@ -86,8 +99,9 @@ export default function PoolPage() {
         {isConnected ? <FaucetButton /> : null}
       </div>
 
+      <FadeIn>
       {isConnected ? (
-        <Card className="border-default border border-solid" variant="transparent">
+        <Card className="border-default shadow-panel border border-solid" variant="transparent">
           {/* transparent + an explicit border: .card--transparent sets border-style:none,
               so border-solid must be named or the width renders nothing.
 
@@ -96,15 +110,17 @@ export default function PoolPage() {
               one line, so the row direction is set explicitly too. */}
           <Card.Header className="flex w-full flex-row flex-wrap items-end justify-between gap-6">
             <div>
-              <p className="text-accent text-4xl font-semibold tabular-nums">
-                ${formatAmount(debt, DEBT_DECIMALS, 2)}
-              </p>
+              <Loadable className="h-10 w-40 rounded-xl" isLoading={isLoading}>
+                <p className="text-accent text-4xl font-semibold tabular-nums">
+                  ${formatAmount(debt, DEBT_DECIMALS, 2)}
+                </p>
+              </Loadable>
               <p className="text-muted mt-1 text-sm">Debt</p>
             </div>
             <div className="flex gap-8">
-              <Stat label="Collateral" value={formatAmount(collateral, COLLATERAL_DECIMALS, 2)} />
-              <Stat label="Credit Limit" value={`$${formatAmount(creditLimit, DEBT_DECIMALS, 2)}`} />
-              <Stat label="Max LTV" value={formatBps(maxLtvBps)} />
+              <Stat label="Collateral" value={formatAmount(collateral, COLLATERAL_DECIMALS, 2)} isLoading={isLoading} />
+              <Stat label="Credit Limit" value={`$${formatAmount(creditLimit, DEBT_DECIMALS, 2)}`} isLoading={isLoading} />
+              <Stat label="Max LTV" value={formatBps(maxLtvBps)} isLoading={isLoading} />
             </div>
           </Card.Header>
 
@@ -121,7 +137,9 @@ export default function PoolPage() {
                   Loan To Value (LTV)
                 </span>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm tabular-nums">{formatBps(ltv)}</span>
+                  <Loadable className="h-5 w-12 rounded" isLoading={isLoading}>
+                    <span className="text-sm tabular-nums">{formatBps(ltv)}</span>
+                  </Loadable>
                   <Chip
                     color={risk === "Low" ? "success" : risk === "Medium" ? "warning" : "danger"}
                   >
@@ -156,6 +174,7 @@ export default function PoolPage() {
               <PositionTabs
                 collateral={
                   <PositionPanel
+                    isLoading={isLoading}
                     balance={`${formatAmount(collateral, COLLATERAL_DECIMALS)} tCTC`}
                     headroom={`${formatAmount(withdrawableCollateral(collateral, debt, creditLimit), COLLATERAL_DECIMALS)} tCTC`}
                     headroomLabel="Withdrawable"
@@ -186,6 +205,7 @@ export default function PoolPage() {
                 }
                 loan={
                   <PositionPanel
+                    isLoading={isLoading}
                     balance={`${formatAmount(debt, DEBT_DECIMALS, 2)} tUSDC`}
                     headroom={`${formatAmount(borrowable(debt, creditLimit), DEBT_DECIMALS, 2)} tUSDC`}
                     headroomLabel="Borrowable"
@@ -222,12 +242,13 @@ export default function PoolPage() {
           </Card.Content>
         </Card>
       ) : (
-        <Card className="border-default border border-solid" variant="transparent">
+        <Card className="border-default shadow-panel border border-solid" variant="transparent">
           <Card.Header>
             <Card.Description>Connect a wallet to interact with the pool.</Card.Description>
           </Card.Header>
         </Card>
       )}
+      </FadeIn>
     </main>
   );
 }

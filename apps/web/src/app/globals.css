@@ -48,3 +48,17 @@
     --muted: oklch(70.5% 0 0);
   }
 }
+
+/**
+ * Panel elevation for a dark ground. A plain drop shadow does nothing here -- black at any
+ * opacity over #131313 is still #131313 -- so the lift comes from a hairline highlight
+ * along the top edge, with a wide, very dark shadow underneath to seat the panel.
+ *
+ * Deliberately unlayered and declared after the HeroUI import: .card--transparent sets
+ * box-shadow itself, and a layered utility of equal specificity would lose to it.
+ */
+.shadow-panel {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+    0 18px 36px -18px rgb(0 0 0 / 0.9);
+}

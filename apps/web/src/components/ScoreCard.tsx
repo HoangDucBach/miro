@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, Separator } from "@heroui/react";
+import { Loadable } from "@/components/ui/Loadable";
 import { useAccount } from "wagmi";
 import { usePassportDetail } from "@/hooks/usePassportDetail";
 import { firstSeenDate, scoreBreakdown } from "@/lib/passport";
@@ -23,7 +24,7 @@ export function ScoreCard() {
 
   if (!isConnected) {
     return (
-      <Card className="border-default border border-solid" variant="transparent">
+      <Card className="border-default shadow-panel border border-solid" variant="transparent">
         <Card.Header>
           <Card.Description>Connect a wallet to see your credit passport.</Card.Description>
         </Card.Header>
@@ -38,7 +39,7 @@ export function ScoreCard() {
 
   return (
     <Card
-      className="border-default w-full gap-3 overflow-hidden border border-solid p-2"
+      className="border-default shadow-panel w-full gap-3 overflow-hidden border border-solid p-2"
       variant="transparent"
     >
       <div
@@ -48,9 +49,11 @@ export function ScoreCard() {
 
       <Card.Header className="gap-1 px-2">
         <Card.Description>Credit passport score</Card.Description>
-        <Card.Title className="text-5xl font-semibold tabular-nums">
-          {isLoading ? "…" : score.toString()}
-        </Card.Title>
+        <Loadable className="h-12 w-28 rounded-xl" isLoading={isLoading}>
+          <Card.Title className="text-5xl font-semibold tabular-nums">
+            {score.toString()}
+          </Card.Title>
+        </Loadable>
       </Card.Header>
 
       {seen === null ? (

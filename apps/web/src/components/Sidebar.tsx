@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Label, SearchField, Tooltip } from "@heroui/react";
+import { Button, Tooltip } from "@heroui/react";
 import { BoxIcon } from "@solar-icons/react/linear/box";
 import { HandMoneyIcon } from "@solar-icons/react/linear/hand-money";
 import { PassportIcon } from "@solar-icons/react/linear/passport";
@@ -64,25 +64,17 @@ export function BrandMark({
  * the drawer is always full width.
  */
 export function NavLinks({
-  filter = "",
   isCollapsed = false,
   onNavigate,
 }: {
-  filter?: string;
   isCollapsed?: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const query = filter.trim().toLowerCase();
-  const visible = query ? routes.filter((r) => r.label.toLowerCase().includes(query)) : routes;
-
-  if (visible.length === 0) {
-    return <p className="text-muted px-3 py-2 text-sm">No matches.</p>;
-  }
 
   return (
     <nav className="flex flex-col gap-1">
-      {visible.map(({ href, label, icon: Icon }) => {
+      {routes.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
 
         const link = (
@@ -137,7 +129,6 @@ export function NavLinks({
  */
 export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [filter, setFilter] = useState("");
 
   return (
     <aside
@@ -145,7 +136,7 @@ export function Sidebar() {
         isCollapsed ? "w-[68px]" : "w-60"
       }`}
     >
-      <div className="border-default flex h-[40dvh] w-full flex-col gap-6 rounded-3xl border p-3">
+      <div className="border-default flex h-[40dvh] w-full flex-col gap-6 rounded-3xl border p-3 shadow-panel">
         <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : "justify-between"}`}>
           {/* The rail shows the mark alone -- at 68px collapsed there is no room for the
            * wordmark, and swapping assets mid-transition would flicker. */}
@@ -162,24 +153,10 @@ export function Sidebar() {
           </Button>
         </div>
 
-        {/* Filters the nav, which is all there is to search so far -- it is not a global
-         * search over pools or addresses. Hidden when collapsed, where there is no room
-         * for a field. */}
-        {isCollapsed ? null : (
-          <SearchField aria-label="Filter navigation" onChange={setFilter} value={filter}>
-            <Label className="sr-only">Filter navigation</Label>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder="Search" />
-              <SearchField.ClearButton />
-            </SearchField.Group>
-          </SearchField>
-        )}
-
         {/* The panel height is fixed, so a longer route list has to scroll rather than
          * spill past the rounded edge. */}
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <NavLinks filter={filter} isCollapsed={isCollapsed} />
+          <NavLinks isCollapsed={isCollapsed} />
         </div>
 
         {/* The nav above takes flex-1, so this lands at the foot of the panel without a

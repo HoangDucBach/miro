@@ -13,12 +13,19 @@ import { formatAmount } from "@/lib/pool";
 export function FaucetButton() {
   const { claim, faucetAmount, isReady, secondsLeft, isPending, error } = useFaucet();
 
-  const label = `Get ${formatAmount(faucetAmount, 6, 0)} tUSDC`;
-  const help = error
-    ? error.message
-    : isReady
-      ? "Mints test tUSDC to your wallet"
-      : `Next claim in ${formatCooldown(secondsLeft)}`;
+  // Until FAUCET_AMOUNT is read the value is 0, and "Get 0 tUSDC" states something false
+  // about what the button does.
+  const label = faucetAmount > 0n ? `Get ${formatAmount(faucetAmount, 6, 0)} tUSDC` : "Get test tUSDC";
+
+  // viem errors carry a one-line `shortMessage` alongside a message that runs to hundreds
+  // of characters of ABI and request dump -- unreadable in a tooltip. Fall back to a
+  // trimmed message only when the short form is absent.
+  const reason =
+    error && "shortMessage" in error && typeof error.shortMessage === "string"
+      ? error.shortMessage
+      : error?.message.split("\n")[0].slice(0, 140);
+
+  const help = reason ?? (isReady ? "Mints test tUSDC to your wallet" : `Next claim in ${formatCooldown(secondsLeft)}`);
 
   return (
     <Tooltip delay={0}>

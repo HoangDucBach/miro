@@ -1,6 +1,6 @@
 "use client";
 
-import { Card } from "@heroui/react";
+import { Card, Skeleton } from "@heroui/react";
 import { useAccount } from "wagmi";
 import { usePassportSources } from "@/hooks/usePassportSources";
 
@@ -13,7 +13,7 @@ export function SourceBreakdown() {
   const credited = sources.filter((s) => s.count > 0n).length;
 
   return (
-    <Card className="border-default max-w-md border border-solid" variant="transparent">
+    <Card className="border-default max-w-md border border-solid shadow-panel" variant="transparent">
       <Card.Header>
         <Card.Title>Sources</Card.Title>
         <Card.Description>
@@ -23,7 +23,14 @@ export function SourceBreakdown() {
 
       <Card.Content className="flex flex-col gap-2">
         {isLoading ? (
-          <Card.Description>Reading the registry…</Card.Description>
+          // Three rows because that is what the deployed registry holds; a different count
+          // would make the list jump when the real one lands.
+          [0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <Skeleton className="h-4 w-28 rounded" />
+              <Skeleton className="h-4 w-32 rounded" />
+            </div>
+          ))
         ) : sources.length === 0 ? (
           // Log queries are the one call a public RPC may refuse outright, and an empty
           // registry is indistinguishable from a refused scan -- so this says both.

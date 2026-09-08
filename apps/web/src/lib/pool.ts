@@ -62,7 +62,9 @@ export function formatBps(bps: bigint): string {
 export function formatAmount(value: bigint, decimals: number, maxFractionDigits = 4): string {
   const raw = formatUnits(value, decimals);
   const [whole, fraction] = raw.split(".");
-  const grouped = Number(whole).toLocaleString("en-US");
+  // Grouped on the digit string, not via Number(): an 18-decimal balance can have a whole
+  // part past 2^53, where Number() would silently round it.
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   if (!fraction) return grouped;
   const trimmed = fraction.slice(0, maxFractionDigits).replace(/0+$/, "");
   return trimmed ? `${grouped}.${trimmed}` : grouped;
