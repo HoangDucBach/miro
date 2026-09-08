@@ -5,6 +5,7 @@ import { IdCard, Landmark, PanelLeft } from "lucide-react";
 import Image from "next/image";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
+import { SidebarProfile } from "@/components/SidebarProfile";
 import { useState } from "react";
 
 const routes = [
@@ -108,9 +109,17 @@ export function NavLinks({
  * Desktop-only rail, floating clear of the viewport edges rather than filling them, so
  * the page ground reads behind it. Below `md` the same links live in Topbar's drawer.
  *
- * It is deliberately 40dvh tall rather than full height: the nav is two entries, and a
- * full-height panel around them is mostly empty. It stays sticky so it holds position
- * while the content column scrolls past.
+ * The panel is deliberately 40dvh tall rather than full height: the nav is two entries,
+ * and a full-height surface around them is mostly empty.
+ *
+ * The rail is w-72, not w-60: the account block puts the avatar, the address and a
+ * Disconnect button on one row, and 240px truncated the address to "0x312...".
+ *
+ * The <aside> and the panel are separate on purpose. The aside is a full-height sticky
+ * column that reserves the width and centers the panel in the viewport; the panel is the
+ * visible 40dvh surface. Centering the aside itself would not work -- `self-center` on a
+ * flex item centers it in the row, and the row is as tall as the content column, so on a
+ * long page the panel would start far down instead of on screen.
  *
  * Collapsing is local state, not a cookie: the App Router keeps this layout mounted
  * across dashboard navigations, so it only resets on a full reload.
@@ -120,30 +129,36 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`border-default bg-surface sticky top-3 hidden h-[40dvh] shrink-0 flex-col gap-6 rounded-2xl border p-3 transition-[width] md:flex ${
-        isCollapsed ? "w-[68px]" : "w-60"
+      className={`sticky top-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 items-center transition-[width] md:flex ${
+        isCollapsed ? "w-[68px]" : "w-72"
       }`}
     >
-      <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : "justify-between"}`}>
-        {/* The rail shows the mark alone -- at 68px collapsed there is no room for the
-         * wordmark, and swapping assets mid-transition would flicker. */}
-        <BrandMark className="size-6" variant="mark" />
+      <div className="border-default bg-surface flex h-[40dvh] w-full flex-col gap-6 rounded-3xl border p-3">
+        <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : "justify-between"}`}>
+          {/* The rail shows the mark alone -- at 68px collapsed there is no room for the
+           * wordmark, and swapping assets mid-transition would flicker. */}
+          <BrandMark className="size-6" variant="mark" />
 
-        <Button
-          isIconOnly
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          size="sm"
-          variant="ghost"
-          onPress={() => setIsCollapsed((v) => !v)}
-        >
-          <PanelLeft />
-        </Button>
-      </div>
+          <Button
+            isIconOnly
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            size="sm"
+            variant="ghost"
+            onPress={() => setIsCollapsed((v) => !v)}
+          >
+            <PanelLeft />
+          </Button>
+        </div>
 
-      {/* The panel height is fixed now, so a longer route list has to scroll rather than
-       * spill past the rounded edge. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <NavLinks isCollapsed={isCollapsed} />
+        {/* The panel height is fixed, so a longer route list has to scroll rather than
+         * spill past the rounded edge. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <NavLinks isCollapsed={isCollapsed} />
+        </div>
+
+        {/* The nav above takes flex-1, so this lands at the foot of the panel without a
+         * margin hack. */}
+        <SidebarProfile isCollapsed={isCollapsed} />
       </div>
     </aside>
   );

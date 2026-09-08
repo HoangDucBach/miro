@@ -1,11 +1,8 @@
 "use client";
 
 import { Button, Label, ListBox, Select } from "@heroui/react";
-import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
-
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
+import { useAccount, useConnect, useSwitchChain } from "wagmi";
+import { shortAddress } from "@/lib/address";
 
 /**
  * Minimal wallet connect/chain-switch UI built directly on wagmi's own hooks, not a
@@ -15,7 +12,6 @@ function shortAddress(address: string): string {
 export function ConnectButton() {
   const { address, isConnected, chain } = useAccount();
   const { connect, connectors, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
   const { switchChain, chains } = useSwitchChain();
 
   if (isConnected && address) {
@@ -44,9 +40,6 @@ export function ConnectButton() {
           </Select.Popover>
         </Select>
         <span className="text-sm tabular-nums">{shortAddress(address)}</span>
-        <Button size="sm" variant="ghost" onPress={() => disconnect()}>
-          Disconnect
-        </Button>
       </div>
     );
   }

@@ -4,6 +4,7 @@ import { Button, Drawer, useOverlayState } from "@heroui/react";
 import { Menu } from "lucide-react";
 import { ConnectButton } from "@/components/ConnectButton";
 import { BrandMark, NavLinks } from "@/components/Sidebar";
+import { SidebarProfile } from "@/components/SidebarProfile";
 
 /**
  * The wallet controls live here rather than in the rail: connected, ConnectButton is a
@@ -41,6 +42,11 @@ export function Topbar() {
                   routed to -- the route changes underneath an unchanged overlay. */}
               <NavLinks onNavigate={drawer.close} />
             </Drawer.Body>
+            {/* Below `md` there is no rail, so the account block would otherwise be
+             * reachable nowhere. */}
+            <Drawer.Footer>
+              <SidebarProfile />
+            </Drawer.Footer>
           </Drawer.Dialog>
         </Drawer.Content>
       </Drawer.Backdrop>
