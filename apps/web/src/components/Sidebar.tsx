@@ -108,6 +108,10 @@ export function NavLinks({
  * Desktop-only rail, floating clear of the viewport edges rather than filling them, so
  * the page ground reads behind it. Below `md` the same links live in Topbar's drawer.
  *
+ * It is deliberately 40dvh tall rather than full height: the nav is two entries, and a
+ * full-height panel around them is mostly empty. It stays sticky so it holds position
+ * while the content column scrolls past.
+ *
  * Collapsing is local state, not a cookie: the App Router keeps this layout mounted
  * across dashboard navigations, so it only resets on a full reload.
  */
@@ -116,7 +120,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`border-default bg-surface sticky top-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 flex-col gap-6 rounded-2xl border p-3 transition-[width] md:flex ${
+      className={`border-default bg-surface sticky top-3 hidden h-[40dvh] shrink-0 flex-col gap-6 rounded-2xl border p-3 transition-[width] md:flex ${
         isCollapsed ? "w-[68px]" : "w-60"
       }`}
     >
@@ -136,7 +140,11 @@ export function Sidebar() {
         </Button>
       </div>
 
-      <NavLinks isCollapsed={isCollapsed} />
+      {/* The panel height is fixed now, so a longer route list has to scroll rather than
+       * spill past the rounded edge. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NavLinks isCollapsed={isCollapsed} />
+      </div>
     </aside>
   );
 }
