@@ -2,6 +2,7 @@
 
 import { Button, Label, SearchField, Tooltip } from "@heroui/react";
 import { BoxIcon } from "@solar-icons/react/linear/box";
+import { HandMoneyIcon } from "@solar-icons/react/linear/hand-money";
 import { PassportIcon } from "@solar-icons/react/linear/passport";
 import { SidebarMinimalisticIcon } from "@solar-icons/react/linear/sidebar-minimalistic";
 import Image from "next/image";
@@ -14,6 +15,7 @@ import { useState } from "react";
 // change -- /dashboard is still the passport view.
 const routes = [
   { href: "/dashboard/pool", label: "Pools", icon: BoxIcon },
+  { href: "/dashboard/lend", label: "Lend", icon: HandMoneyIcon },
   { href: "/dashboard", label: "Passport", icon: PassportIcon },
 ] as const;
 
