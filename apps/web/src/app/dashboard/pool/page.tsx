@@ -14,6 +14,7 @@ import { PositionTabs } from "@/components/pool/PositionTabs";
 import { useBorrow } from "@/hooks/useBorrow";
 import { useDepositCollateral } from "@/hooks/useDepositCollateral";
 import { usePassportPoolPosition } from "@/hooks/usePassportPoolPosition";
+import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useRepay } from "@/hooks/useRepay";
 import { useWithdrawCollateral } from "@/hooks/useWithdrawCollateral";
 import {
@@ -76,6 +77,7 @@ export default function PoolPage() {
   const { isConnected } = useAccount();
   const { collateral, debt, creditLimit, maxLtvBps, collateralValue, isLoading } =
     usePassportPoolPosition();
+  const wallet = useWalletBalances();
   const deposit = useDepositCollateral();
   const withdraw = useWithdrawCollateral();
   const borrow = useBorrow();
@@ -184,6 +186,11 @@ export default function PoolPage() {
                           action="Withdraw"
                           decimals={COLLATERAL_DECIMALS}
                           error={withdraw.error}
+                          available={{
+                            label: "Withdrawable",
+                            symbol: "tCTC",
+                            value: withdrawableCollateral(collateral, debt, creditLimit),
+                          }}
                           fieldLabel="Amount to withdraw (tCTC)"
                           isConfirmed={withdraw.isConfirmed}
                           isPending={withdraw.isPending}
@@ -194,6 +201,9 @@ export default function PoolPage() {
                           action="Deposit"
                           decimals={COLLATERAL_DECIMALS}
                           error={deposit.error}
+                          // Native tCTC, and gas comes out of the same balance, so this
+                          // is a ceiling to stay under rather than a figure to match.
+                          available={{ label: "In wallet", symbol: "tCTC", value: wallet.native }}
                           fieldLabel="Amount to deposit (tCTC)"
                           isConfirmed={deposit.isConfirmed}
                           isPending={deposit.isPending}
@@ -218,6 +228,13 @@ export default function PoolPage() {
                           action="Approve and Repay"
                           decimals={DEBT_DECIMALS}
                           error={repay.error}
+                          // Bounded by both the debt and what is actually held: repaying
+                          // more than owed is refused, and more than held cannot transfer.
+                          available={{
+                            label: "Owed, and held",
+                            symbol: "tUSDC",
+                            value: debt < wallet.usdc ? debt : wallet.usdc,
+                          }}
                           fieldLabel="Amount to repay (tUSDC)"
                           isConfirmed={repay.isConfirmed}
                           isPending={repay.isPending}
@@ -228,6 +245,11 @@ export default function PoolPage() {
                           action="Borrow"
                           decimals={DEBT_DECIMALS}
                           error={borrow.error}
+                          available={{
+                            label: "Borrowable",
+                            symbol: "tUSDC",
+                            value: borrowable(debt, creditLimit),
+                          }}
                           fieldLabel="Amount to borrow (tUSDC)"
                           isConfirmed={borrow.isConfirmed}
                           isPending={borrow.isPending}

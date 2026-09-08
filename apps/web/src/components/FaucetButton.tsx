@@ -30,7 +30,19 @@ export function FaucetButton() {
   return (
     <Tooltip delay={0}>
       <Tooltip.Trigger>
-        <Button isDisabled={!isReady} isPending={isPending} size="sm" variant="outline" onPress={() => void claim()}>
+        {/* Declining in the wallet rejects this promise. Left uncaught it becomes an
+            unhandled rejection, and Next's dev overlay throws an error page over the app
+            for what is simply the user changing their mind. The reason still reaches the
+            tooltip through the hook's own error state. */}
+        <Button
+          isDisabled={!isReady}
+          isPending={isPending}
+          size="sm"
+          variant="outline"
+          onPress={() => {
+            claim().catch(() => {});
+          }}
+        >
           {isPending ? <Spinner color="current" size="sm" /> : <HandMoneyIcon className="size-4" />}
           {isPending ? "Claiming…" : label}
         </Button>

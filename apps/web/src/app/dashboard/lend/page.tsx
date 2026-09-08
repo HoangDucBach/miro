@@ -143,6 +143,8 @@ export default function LendPage() {
                   action="Withdraw"
                   decimals={DECIMALS}
                   error={withdraw.error}
+                  // withdrawLP is bounded by principal, not by the payout it converts to.
+                  available={{ label: "Principal deposited", symbol: "tUSDC", value: lpDeposit }}
                   fieldLabel="Principal to redeem (tUSDC)"
                   isConfirmed={withdraw.isConfirmed}
                   isPending={withdraw.isPending}
@@ -153,6 +155,7 @@ export default function LendPage() {
                   action="Approve and Lend"
                   decimals={DECIMALS}
                   error={deposit.error}
+                  available={{ label: "In wallet", symbol: "tUSDC", value: walletBalance }}
                   fieldLabel="Amount to lend (tUSDC)"
                   isConfirmed={deposit.isConfirmed}
                   isPending={deposit.isPending}

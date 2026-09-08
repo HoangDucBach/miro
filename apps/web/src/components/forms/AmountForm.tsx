@@ -1,9 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, FieldError, Input, Label, Spinner, TextField } from "@heroui/react";
+import { Button, Description, FieldError, Input, Label, Spinner, TextField } from "@heroui/react";
 import { Controller, useForm } from "react-hook-form";
 import { parseUnits } from "viem";
+import { formatAmount } from "@/lib/pool";
 import { amountSchema, type AmountFormValues } from "@/schemas/forms";
 
 interface AmountFormProps {
@@ -16,6 +17,12 @@ interface AmountFormProps {
   isPending: boolean;
   isConfirmed: boolean;
   error: Error | null;
+  /**
+   * The ceiling this particular action is bounded by -- wallet balance, credit headroom,
+   * withdrawable collateral. Each action has a different one, so it is passed in rather
+   * than assumed here.
+   */
+  available?: { label: string; value: bigint; symbol: string };
 }
 
 /**
@@ -28,7 +35,16 @@ interface AmountFormProps {
  * react-hook-form's `Controller` rather than `register()` -- `register`'s ref/onChange
  * contract assumes a plain DOM input.
  */
-export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, isConfirmed, error }: AmountFormProps) {
+export function AmountForm({
+  label,
+  submitLabel,
+  decimals,
+  onSubmit,
+  isPending,
+  isConfirmed,
+  error,
+  available,
+}: AmountFormProps) {
   const {
     control,
     handleSubmit,
@@ -71,6 +87,13 @@ export function AmountForm({ label, submitLabel, decimals, onSubmit, isPending, 
                 {isPending ? "Submitting…" : submitLabel}
               </Button>
             </div>
+            {/* Rendered through Description so React Aria wires it to the input's
+                aria-describedby, rather than floating as unassociated text. */}
+            {available ? (
+              <Description className="tabular-nums">
+                {available.label} {formatAmount(available.value, decimals)} {available.symbol}
+              </Description>
+            ) : null}
             {message ? <FieldError>{message}</FieldError> : null}
           </TextField>
         )}

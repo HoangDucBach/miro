@@ -14,6 +14,7 @@ interface ActionModalProps {
   isConfirmed: boolean;
   error: Error | null;
   variant?: "primary" | "outline";
+  available?: { label: string; value: bigint; symbol: string };
 }
 
 /**
@@ -31,6 +32,7 @@ export function ActionModal({
   isConfirmed,
   error,
   variant = "primary",
+  available,
 }: ActionModalProps) {
   const modal = useOverlayState();
   const { close, open } = modal;
@@ -69,6 +71,7 @@ export function ActionModal({
             </Modal.Header>
             <Modal.Body>
               <AmountForm
+                available={available}
                 decimals={decimals}
                 error={error}
                 isConfirmed={confirmedHere}
