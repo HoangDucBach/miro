@@ -1,40 +1,228 @@
 "use client";
 
-import { Typography } from "@heroui/react";
+import { Card, Chip, Meter, Separator, Tabs, Typography } from "@heroui/react";
+import { AltArrowLeftIcon } from "@solar-icons/react/linear/alt-arrow-left";
+import { RefreshIcon } from "@solar-icons/react/linear/refresh";
+import NextLink from "next/link";
 import { useAccount } from "wagmi";
-import { BorrowForm } from "@/components/forms/BorrowForm";
-import { DepositCollateralForm } from "@/components/forms/DepositCollateralForm";
-import { RepayForm } from "@/components/forms/RepayForm";
-import { WithdrawCollateralForm } from "@/components/forms/WithdrawCollateralForm";
-import { PoolPositionCard } from "@/components/PoolPositionCard";
+import { ActionModal } from "@/components/pool/ActionModal";
+import { useBorrow } from "@/hooks/useBorrow";
+import { useDepositCollateral } from "@/hooks/useDepositCollateral";
+import { usePassportPoolPosition } from "@/hooks/usePassportPoolPosition";
+import { useRepay } from "@/hooks/useRepay";
+import { useWithdrawCollateral } from "@/hooks/useWithdrawCollateral";
+import {
+  borrowable,
+  formatAmount,
+  formatBps,
+  ltvBps,
+  riskLevel,
+  withdrawableCollateral,
+} from "@/lib/pool";
+
+const COLLATERAL_DECIMALS = 18; // tCTC
+const DEBT_DECIMALS = 6; // tUSDC
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="text-right">
+      <p className="text-lg font-medium tabular-nums">{value}</p>
+      <p className="text-muted text-sm">{label}</p>
+    </div>
+  );
+}
+
+/** The balance-plus-actions block that both tabs share, differing only in token and copy. */
+function PositionPanel({
+  balance,
+  headroom,
+  headroomLabel,
+  actions,
+}: {
+  balance: string;
+  headroom: string;
+  headroomLabel: string;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div className="bg-surface-secondary flex flex-col gap-6 rounded-2xl p-6">
+      <div>
+        <p className="text-3xl font-semibold tabular-nums sm:text-4xl">{balance}</p>
+        <p className="text-muted mt-2 text-sm">
+          {headroomLabel} <span className="text-accent tabular-nums">{headroom}</span>
+        </p>
+      </div>
+      <div className="flex flex-wrap justify-end gap-3">{actions}</div>
+    </div>
+  );
+}
 
 export default function PoolPage() {
   const { isConnected } = useAccount();
+  const { collateral, debt, creditLimit, maxLtvBps } = usePassportPoolPosition();
+  const deposit = useDepositCollateral();
+  const withdraw = useWithdrawCollateral();
+  const borrow = useBorrow();
+  const repay = useRepay();
+
+  const ltv = ltvBps(debt, creditLimit, maxLtvBps);
+  const risk = riskLevel(ltv, maxLtvBps);
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
-      <Typography type="h3">PassportPool</Typography>
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 px-6 py-8">
+      <NextLink
+        className="text-muted hover:text-foreground flex w-fit items-center gap-2 text-sm transition-colors"
+        href="/dashboard"
+      >
+        <AltArrowLeftIcon className="size-4" />
+        Back to home
+      </NextLink>
 
-      <Typography type="body-sm" color="muted">
-        Always over-collateralized (max 75% LTV) — a higher passport score raises the LTV
-        cap, it never removes the collateral requirement. Repaying in full here also
-        reports back into the same passport it reads from.
-      </Typography>
+      <Typography type="h2">All pools</Typography>
 
       {isConnected ? (
-        <>
-          <PoolPositionCard />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <DepositCollateralForm />
-            <WithdrawCollateralForm />
-            <BorrowForm />
-            <RepayForm />
-          </div>
-        </>
+        <Card>
+          {/* Card.Header stacks its children by default; the reference puts the debt and
+              the stats on one line, so the row direction is set explicitly. */}
+          <Card.Header className="flex w-full flex-row flex-wrap items-end justify-between gap-6">
+            <div>
+              <p className="text-accent text-4xl font-semibold tabular-nums">
+                ${formatAmount(debt, DEBT_DECIMALS, 2)}
+              </p>
+              <p className="text-muted mt-1 text-sm">Debt</p>
+            </div>
+            <div className="flex gap-8">
+              <Stat label="Collateral" value={formatAmount(collateral, COLLATERAL_DECIMALS, 2)} />
+              <Stat label="Credit Limit" value={`$${formatAmount(creditLimit, DEBT_DECIMALS, 2)}`} />
+              <Stat label="Max LTV" value={formatBps(maxLtvBps)} />
+            </div>
+          </Card.Header>
+
+          <Separator />
+
+          <Card.Content className="flex flex-col gap-5">
+            {/* A Meter, not a Slider: LTV is derived from debt against collateral, so there
+             * is nothing here to drag. The reference draws a slider track, but a thumb
+             * would advertise an adjustment the contract does not offer. */}
+            <div className="bg-surface-secondary flex flex-col gap-4 rounded-2xl p-5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 font-medium">
+                  <RefreshIcon className="size-5" />
+                  Loan To Value (LTV)
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm tabular-nums">{formatBps(ltv)}</span>
+                  <Chip
+                    color={risk === "Low" ? "success" : risk === "Medium" ? "warning" : "danger"}
+                  >
+                    {risk}
+                  </Chip>
+                </div>
+              </div>
+
+              {/* The bounds sit outside the Meter because .meter is a grid whose areas are
+               * "label output" over "track track" -- anything wrapping the track stops
+               * being a grid item, and the track collapses to zero height. */}
+              <div className="flex items-center gap-3">
+                <span className="text-muted text-xs tabular-nums">0%</span>
+                <Meter
+                  aria-label="Loan to value"
+                  className="flex-1"
+                  maxValue={Number(maxLtvBps)}
+                  value={Number(ltv)}
+                >
+                  <Meter.Track>
+                    <Meter.Fill />
+                  </Meter.Track>
+                </Meter>
+                <span className="text-muted text-xs tabular-nums">{formatBps(maxLtvBps)}</span>
+              </div>
+            </div>
+
+            <Tabs>
+              <Tabs.ListContainer className="w-fit">
+                <Tabs.List aria-label="Position">
+                  <Tabs.Tab id="collateral">
+                    Collateral
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                  <Tabs.Tab id="loan">
+                    Loan
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs.ListContainer>
+
+              <Tabs.Panel className="pt-4" id="collateral">
+                <PositionPanel
+                  balance={`${formatAmount(collateral, COLLATERAL_DECIMALS)} tCTC`}
+                  headroom={`${formatAmount(withdrawableCollateral(collateral, debt, creditLimit), COLLATERAL_DECIMALS)} tCTC`}
+                  headroomLabel="Withdrawable"
+                  actions={
+                    <>
+                      <ActionModal
+                        action="Withdraw"
+                        decimals={COLLATERAL_DECIMALS}
+                        error={withdraw.error}
+                        fieldLabel="Amount to withdraw (tCTC)"
+                        isConfirmed={withdraw.isConfirmed}
+                        isPending={withdraw.isPending}
+                        onSubmit={withdraw.withdraw}
+                        variant="outline"
+                      />
+                      <ActionModal
+                        action="Deposit"
+                        decimals={COLLATERAL_DECIMALS}
+                        error={deposit.error}
+                        fieldLabel="Amount to deposit (tCTC)"
+                        isConfirmed={deposit.isConfirmed}
+                        isPending={deposit.isPending}
+                        onSubmit={deposit.deposit}
+                      />
+                    </>
+                  }
+                />
+              </Tabs.Panel>
+
+              <Tabs.Panel className="pt-4" id="loan">
+                <PositionPanel
+                  balance={`${formatAmount(debt, DEBT_DECIMALS, 2)} tUSDC`}
+                  headroom={`${formatAmount(borrowable(debt, creditLimit), DEBT_DECIMALS, 2)} tUSDC`}
+                  headroomLabel="Borrowable"
+                  actions={
+                    <>
+                      <ActionModal
+                        action="Repay"
+                        decimals={DEBT_DECIMALS}
+                        error={repay.error}
+                        fieldLabel="Amount to repay (tUSDC)"
+                        isConfirmed={repay.isConfirmed}
+                        isPending={repay.isPending}
+                        onSubmit={repay.repay}
+                        variant="outline"
+                      />
+                      <ActionModal
+                        action="Borrow"
+                        decimals={DEBT_DECIMALS}
+                        error={borrow.error}
+                        fieldLabel="Amount to borrow (tUSDC)"
+                        isConfirmed={borrow.isConfirmed}
+                        isPending={borrow.isPending}
+                        onSubmit={borrow.borrow}
+                      />
+                    </>
+                  }
+                />
+              </Tabs.Panel>
+            </Tabs>
+          </Card.Content>
+        </Card>
       ) : (
-        <Typography type="body-sm" color="muted">
-          Connect a wallet to interact with the pool.
-        </Typography>
+        <Card>
+          <Card.Header>
+            <Card.Description>Connect a wallet to interact with the pool.</Card.Description>
+          </Card.Header>
+        </Card>
       )}
     </main>
   );
