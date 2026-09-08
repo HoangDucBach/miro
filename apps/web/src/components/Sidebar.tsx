@@ -112,9 +112,6 @@ export function NavLinks({
  * The panel is deliberately 40dvh tall rather than full height: the nav is two entries,
  * and a full-height surface around them is mostly empty.
  *
- * The rail is w-72, not w-60: the account block puts the avatar, the address and a
- * Disconnect button on one row, and 240px truncated the address to "0x312...".
- *
  * The <aside> and the panel are separate on purpose. The aside is a full-height sticky
  * column that reserves the width and centers the panel in the viewport; the panel is the
  * visible 40dvh surface. Centering the aside itself would not work -- `self-center` on a
@@ -130,7 +127,7 @@ export function Sidebar() {
   return (
     <aside
       className={`sticky top-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 items-center transition-[width] md:flex ${
-        isCollapsed ? "w-[68px]" : "w-72"
+        isCollapsed ? "w-[68px]" : "w-60"
       }`}
     >
       <div className="border-default bg-surface flex h-[40dvh] w-full flex-col gap-6 rounded-3xl border p-3">

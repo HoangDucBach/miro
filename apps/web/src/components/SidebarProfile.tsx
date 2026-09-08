@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, Button, Tooltip } from "@heroui/react";
-import { User } from "lucide-react";
+import { LogOut, User } from "lucide-react";
 import { useAccount, useDisconnect } from "wagmi";
 import { usePassportScore } from "@/hooks/usePassportScore";
 import { shortAddress } from "@/lib/address";
@@ -45,16 +45,30 @@ export function SidebarProfile({ isCollapsed = false }: { isCollapsed?: boolean 
   }
 
   return (
-    <div className="flex items-center">
+    <div className="flex items-center gap-1">
       {avatar}
 
       {/* min-w-0 so the address truncates inside the rail instead of widening it. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-sm tabular-nums">{shortAddress(address)}</span>
-          <Button size="sm" variant="tertiary" onPress={() => disconnect()}>
-            Disconnect
-          </Button>
+          {/* Icon rather than a "Disconnect" label: the label cost ~95px of a 240px rail
+           * and forced it wider, for the least-used control in the block. The tooltip
+           * and aria-label carry the name the text used to. */}
+          <Tooltip delay={0}>
+            <Tooltip.Trigger>
+              <Button
+                isIconOnly
+                aria-label="Disconnect wallet"
+                size="sm"
+                variant="ghost"
+                onPress={() => disconnect()}
+              >
+                <LogOut />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="top">Disconnect</Tooltip.Content>
+          </Tooltip>
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-muted text-xs">Score</span>
