@@ -46,7 +46,7 @@ export function SidebarProfile({ isCollapsed = false }: { isCollapsed?: boolean 
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       {avatar}
 
       {/* min-w-0 so the address truncates inside the rail instead of widening it. */}
