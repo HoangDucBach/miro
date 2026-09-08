@@ -64,6 +64,55 @@ export const creditPassportAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'PER_SOURCE_CAP',
+    outputs: [{ type: 'uint32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'REPAY_POINTS',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'DIVERSITY_POINTS',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'AGE_PERIOD',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'AGE_POINTS_PER_PERIOD',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'AGE_CAP_PERIODS',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'NEGATIVE_PENALTY',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ type: 'address' }],
     name: 'passports',
     outputs: [
@@ -447,6 +496,69 @@ export const useReadCreditPassportLocalSourceIdFor =
 export const useReadCreditPassportScoreOf = /*#__PURE__*/ createUseReadContract(
   { abi: creditPassportAbi, functionName: 'scoreOf' },
 )
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"PER_SOURCE_CAP"`
+ */
+export const useReadCreditPassportPerSourceCap =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'PER_SOURCE_CAP',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"REPAY_POINTS"`
+ */
+export const useReadCreditPassportRepayPoints =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'REPAY_POINTS',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"DIVERSITY_POINTS"`
+ */
+export const useReadCreditPassportDiversityPoints =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'DIVERSITY_POINTS',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"AGE_PERIOD"`
+ */
+export const useReadCreditPassportAgePeriod =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'AGE_PERIOD',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"AGE_POINTS_PER_PERIOD"`
+ */
+export const useReadCreditPassportAgePointsPerPeriod =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'AGE_POINTS_PER_PERIOD',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"AGE_CAP_PERIODS"`
+ */
+export const useReadCreditPassportAgeCapPeriods =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'AGE_CAP_PERIODS',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"NEGATIVE_PENALTY"`
+ */
+export const useReadCreditPassportNegativePenalty =
+  /*#__PURE__*/ createUseReadContract({
+    abi: creditPassportAbi,
+    functionName: 'NEGATIVE_PENALTY',
+  })
 
 /**
  * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__ and `functionName` set to `"passports"`

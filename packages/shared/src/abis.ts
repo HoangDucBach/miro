@@ -13,6 +13,15 @@ export const CREDIT_PASSPORT_ABI = [
   "function localSourceIdFor(address reporter) external pure returns (bytes32)",
   "function recordLocalRepay(address borrower, uint256 amount) external",
   "function scoreOf(address borrower) external view returns (uint256)",
+  // Scoring parameters. Exposed so consumers can explain a score rather than restating
+  // the formula's constants and drifting from the deployed contract.
+  "function PER_SOURCE_CAP() external view returns (uint32)",
+  "function REPAY_POINTS() external view returns (uint256)",
+  "function DIVERSITY_POINTS() external view returns (uint256)",
+  "function AGE_PERIOD() external view returns (uint256)",
+  "function AGE_POINTS_PER_PERIOD() external view returns (uint256)",
+  "function AGE_CAP_PERIODS() external view returns (uint256)",
+  "function NEGATIVE_PENALTY() external view returns (uint256)",
   "function passports(address) external view returns (uint40 firstSeenAt, uint32 cappedRepays, uint32 negativeEvents, uint16 sourceCount)",
   "function sourceStats(address, bytes32) external view returns (uint32 count, uint40 lastAt)",
   "function sources(bytes32) external view returns (uint64 chainKey, address emitter, bytes32 topic0, uint8 borrowerLoc, uint8 borrowerDataWord, uint8 amountDataWord, uint256 minAmount, bool negative, bool enabled)",

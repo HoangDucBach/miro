@@ -1,7 +1,16 @@
 import { defineConfig } from "@wagmi/cli";
 import { react } from "@wagmi/cli/plugins";
 import { parseAbi } from "viem";
-import { CREDIT_PASSPORT_ABI, PASSPORT_POOL_ABI, TEST_USDC_ABI, PRICE_ORACLE_ABI } from "@miro/shared";
+// Imported from the abis module directly, not the package root: @miro/shared's index
+// re-exports with TypeScript's ".js"-suffixed ESM specifiers, which the wagmi CLI's
+// loader cannot resolve (it looks for a real types.js), and pulls in ethers besides.
+// abis.ts has no imports of its own, so this path loads cleanly.
+import {
+  CREDIT_PASSPORT_ABI,
+  PASSPORT_POOL_ABI,
+  TEST_USDC_ABI,
+  PRICE_ORACLE_ABI,
+} from "../../packages/shared/src/abis";
 
 /**
  * viem's human-readable ABI parser (unlike ethers') doesn't accept inline `tuple(...)`
