@@ -6,6 +6,7 @@ import { RefreshIcon } from "@solar-icons/react/linear/refresh";
 import NextLink from "next/link";
 import { Suspense } from "react";
 import { useAccount } from "wagmi";
+import { FaucetButton } from "@/components/FaucetButton";
 import { ActionModal } from "@/components/pool/ActionModal";
 import { PositionTabs } from "@/components/pool/PositionTabs";
 import { useBorrow } from "@/hooks/useBorrow";
@@ -80,7 +81,10 @@ export default function PoolPage() {
         Back to home
       </NextLink>
 
-      <Typography type="h2">All pools</Typography>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Typography type="h2">All pools</Typography>
+        {isConnected ? <FaucetButton /> : null}
+      </div>
 
       {isConnected ? (
         <Card className="border-default border border-solid" variant="transparent">

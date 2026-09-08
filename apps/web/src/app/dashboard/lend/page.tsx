@@ -5,6 +5,7 @@ import { AltArrowLeftIcon } from "@solar-icons/react/linear/alt-arrow-left";
 import { ChartIcon } from "@solar-icons/react/linear/chart";
 import NextLink from "next/link";
 import { useAccount } from "wagmi";
+import { FaucetButton } from "@/components/FaucetButton";
 import { ActionModal } from "@/components/pool/ActionModal";
 import { useLpDeposit } from "@/hooks/useLpDeposit";
 import { useLpPosition } from "@/hooks/useLpPosition";
@@ -48,7 +49,10 @@ export default function LendPage() {
         Back to home
       </NextLink>
 
-      <Typography type="h2">Lend</Typography>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Typography type="h2">Lend</Typography>
+        {isConnected ? <FaucetButton /> : null}
+      </div>
 
       {isConnected ? (
         <Card className="border-default border border-solid" variant="transparent">

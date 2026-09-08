@@ -446,6 +446,27 @@ export const testUsdcAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'FAUCET_AMOUNT',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'FAUCET_COOLDOWN',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ type: 'address' }],
+    name: 'lastFaucetClaim',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'decimals',
     outputs: [{ type: 'uint8' }],
     stateMutability: 'view',
@@ -1038,6 +1059,32 @@ export const useReadTestUsdcAllowance = /*#__PURE__*/ createUseReadContract({
   abi: testUsdcAbi,
   functionName: 'allowance',
 })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link testUsdcAbi}__ and `functionName` set to `"FAUCET_AMOUNT"`
+ */
+export const useReadTestUsdcFaucetAmount = /*#__PURE__*/ createUseReadContract({
+  abi: testUsdcAbi,
+  functionName: 'FAUCET_AMOUNT',
+})
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link testUsdcAbi}__ and `functionName` set to `"FAUCET_COOLDOWN"`
+ */
+export const useReadTestUsdcFaucetCooldown =
+  /*#__PURE__*/ createUseReadContract({
+    abi: testUsdcAbi,
+    functionName: 'FAUCET_COOLDOWN',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link testUsdcAbi}__ and `functionName` set to `"lastFaucetClaim"`
+ */
+export const useReadTestUsdcLastFaucetClaim =
+  /*#__PURE__*/ createUseReadContract({
+    abi: testUsdcAbi,
+    functionName: 'lastFaucetClaim',
+  })
 
 /**
  * Wraps __{@link useReadContract}__ with `abi` set to __{@link testUsdcAbi}__ and `functionName` set to `"decimals"`

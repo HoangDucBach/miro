@@ -69,6 +69,11 @@ export const TEST_USDC_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function transfer(address to, uint256 amount) returns (bool)",
   "function faucet() external",
+  // Faucet terms, so a UI can show the amount and the cooldown instead of letting the
+  // claim revert with "faucet on cooldown" and leaving the user to guess why.
+  "function FAUCET_AMOUNT() external view returns (uint256)",
+  "function FAUCET_COOLDOWN() external view returns (uint256)",
+  "function lastFaucetClaim(address) external view returns (uint256)",
   "function decimals() view returns (uint8)",
 ] as const;
 
