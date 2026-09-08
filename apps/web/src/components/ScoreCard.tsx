@@ -38,7 +38,7 @@ export function ScoreCard() {
 
   return (
     <Card
-      className="border-default max-w-md gap-3 overflow-hidden border border-solid p-2"
+      className="border-default w-full gap-3 overflow-hidden border border-solid p-2"
       variant="transparent"
     >
       <div
@@ -56,8 +56,7 @@ export function ScoreCard() {
       {seen === null ? (
         <Card.Footer className="px-2 pb-1">
           <Card.Description>
-            No passport yet — it opens on the first repayment attested from any registered
-            source.
+            No passport yet — start borrowing and repaying to build one.
           </Card.Description>
         </Card.Footer>
       ) : (
