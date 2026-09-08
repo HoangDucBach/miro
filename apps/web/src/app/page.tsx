@@ -38,14 +38,6 @@ export default function LandingPage() {
 
       {/* Decorative accent. Hidden below `md`: at phone widths it would sit on top of the
        * headline rather than beside it. */}
-      <Image
-        src="/coin-3d.png"
-        alt=""
-        aria-hidden
-        width={800}
-        height={800}
-        className="pointer-events-none absolute top-1/3 -left-10 -z-10 hidden size-40 rotate-12 opacity-90 drop-shadow-2xl md:block lg:left-24 lg:size-48"
-      />
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
         {/* The lockup's wordmark is already the site name, so the mark alone would leave
@@ -60,14 +52,32 @@ export default function LandingPage() {
           className="size-40 sm:size-52"
         />
 
-        <Typography type="h1" align="center" weight="bold" className="max-w-4xl text-balance">
+        <Typography
+          type="h1"
+          align="center"
+          weight="bold"
+          className="max-w-4xl text-balance"
+        >
           Your Credit, Everywhere You&rsquo;ve Earned It
         </Typography>
 
-        <Typography type="body" color="muted" align="center" className="max-w-md text-pretty">
+        <Typography
+          type="body"
+          color="muted"
+          align="center"
+          className="max-w-md text-pretty"
+        >
           Deposit, borrow, repay, or lend — every action here also builds your{" "}
           <span className="text-accent">passport</span>.
         </Typography>
+        <Image
+          src="/coin-3d.png"
+          alt=""
+          aria-hidden
+          width={800}
+          height={800}
+          className="pointer-events-none -z-10 hidden size-40 md:block lg:left-24 lg:size-48"
+        />
       </div>
 
       <div className="flex flex-col items-center gap-8 pb-10">
@@ -76,7 +86,10 @@ export default function LandingPage() {
          * HeroUI exports for exactly this, and `.button svg` sizes the chevron for us.
          * tertiary, not secondary: both sit on --default, but secondary also sets
          * --button-fg to --accent-soft-foreground, tinting the label purple. */}
-        <NextLink className={buttonVariants({ size: "lg", variant: "tertiary" })} href="/dashboard">
+        <NextLink
+          className={buttonVariants({ size: "lg", variant: "tertiary" })}
+          href="/dashboard"
+        >
           Explore the New Era of Credit Lending
           <ChevronRight />
         </NextLink>

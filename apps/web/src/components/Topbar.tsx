@@ -14,7 +14,7 @@ export function Topbar() {
   const drawer = useOverlayState();
 
   return (
-    <header className="border-default flex items-center gap-4 border-b px-4 py-3 md:px-6">
+    <header className="flex items-center gap-4 px-1 py-1 md:px-2">
       {/* Below `md` there is no rail, so the brand and the drawer trigger surface here. */}
       <div className="flex items-center gap-2 md:hidden">
         <Button aria-label="Open navigation" size="sm" variant="ghost" onPress={drawer.open}>

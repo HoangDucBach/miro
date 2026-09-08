@@ -1,9 +1,11 @@
 "use client";
 
-import { IdCard, Landmark } from "lucide-react";
+import { Button, Tooltip } from "@heroui/react";
+import { IdCard, Landmark, PanelLeft } from "lucide-react";
 import Image from "next/image";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 const routes = [
   { href: "/dashboard", label: "Passport", icon: IdCard },
@@ -20,10 +22,47 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 /**
- * Rendered twice -- once in the desktop rail, once inside the mobile drawer -- so the two
- * placements can never drift out of sync as routes are added.
+ * The lockup ships only in a "Dark" cut -- white wordmark, for dark grounds -- which is
+ * all the app needs while dark is the default theme. A light-theme build needs a Light
+ * cut here, not a filter.
  */
-export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+export function BrandMark({
+  className = "h-6",
+  variant = "lockup",
+}: {
+  className?: string;
+  variant?: "lockup" | "mark";
+}) {
+  const isLockup = variant === "lockup";
+
+  return (
+    <NextLink aria-label="Miro home" className="w-fit shrink-0" href="/">
+      <Image
+        alt="Miro"
+        className={`${className} w-auto`}
+        // The lockup is 3:1; the mark is square. Passing each its own intrinsic size keeps
+        // next/image from reserving the wrong box before the file loads.
+        height={512}
+        priority
+        src={isLockup ? "/Logo/Dark.png" : "/Favicon.png"}
+        width={isLockup ? 1536 : 512}
+      />
+    </NextLink>
+  );
+}
+
+/**
+ * Rendered in the desktop rail and again inside the mobile drawer, so the two placements
+ * cannot drift apart as routes are added. `isCollapsed` only ever comes from the rail --
+ * the drawer is always full width.
+ */
+export function NavLinks({
+  isCollapsed = false,
+  onNavigate,
+}: {
+  isCollapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
 
   return (
@@ -31,22 +70,34 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       {routes.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
 
-        return (
+        const link = (
           <NextLink
-            key={href}
             href={href}
             onClick={onNavigate}
             // The highlight is purely visual; aria-current is what carries it to a screen reader.
             aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+            className={`flex items-center gap-3 rounded-lg py-2 text-sm transition-colors ${
+              isCollapsed ? "justify-center px-2" : "px-3"
+            } ${
               active
                 ? "bg-default text-foreground font-medium"
                 : "text-muted hover:bg-default hover:text-foreground"
             }`}
           >
             <Icon className="size-4 shrink-0" />
-            {label}
+            {/* Kept in the DOM rather than dropped: collapsed, the icon alone would leave
+             * the link with no accessible name at all. */}
+            <span className={isCollapsed ? "sr-only" : undefined}>{label}</span>
           </NextLink>
+        );
+
+        return isCollapsed ? (
+          <Tooltip key={href} delay={0}>
+            <Tooltip.Trigger>{link}</Tooltip.Trigger>
+            <Tooltip.Content placement="right">{label}</Tooltip.Content>
+          </Tooltip>
+        ) : (
+          <div key={href}>{link}</div>
         );
       })}
     </nav>
@@ -54,33 +105,38 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 /**
- * The lockup ships only in a "Dark" cut -- white wordmark, for dark grounds -- which is
- * all the app needs while dark is the default theme. A light-theme build needs a Light
- * cut here, not a filter.
+ * Desktop-only rail, floating clear of the viewport edges rather than filling them, so
+ * the page ground reads behind it. Below `md` the same links live in Topbar's drawer.
+ *
+ * Collapsing is local state, not a cookie: the App Router keeps this layout mounted
+ * across dashboard navigations, so it only resets on a full reload.
  */
-export function BrandMark({ className = "h-6" }: { className?: string }) {
-  return (
-    <NextLink aria-label="Miro home" className="w-fit" href="/">
-      <Image
-        alt="Miro"
-        className={`${className} w-auto`}
-        height={512}
-        priority
-        src="/Logo/Dark.png"
-        width={1536}
-      />
-    </NextLink>
-  );
-}
-
-/** Desktop-only rail. Below `md` the same links live in Topbar's drawer instead. */
 export function Sidebar() {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <aside className="border-default hidden w-56 shrink-0 flex-col gap-6 border-r px-3 py-6 md:flex">
-      <div className="px-3">
-        <BrandMark />
+    <aside
+      className={`border-default bg-surface sticky top-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 flex-col gap-6 rounded-2xl border p-3 transition-[width] md:flex ${
+        isCollapsed ? "w-[68px]" : "w-60"
+      }`}
+    >
+      <div className={`flex items-center gap-2 ${isCollapsed ? "flex-col" : "justify-between"}`}>
+        {/* The rail shows the mark alone -- at 68px collapsed there is no room for the
+         * wordmark, and swapping assets mid-transition would flicker. */}
+        <BrandMark className="size-6" variant="mark" />
+
+        <Button
+          isIconOnly
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          size="sm"
+          variant="ghost"
+          onPress={() => setIsCollapsed((v) => !v)}
+        >
+          <PanelLeft />
+        </Button>
       </div>
-      <NavLinks />
+
+      <NavLinks isCollapsed={isCollapsed} />
     </aside>
   );
 }
