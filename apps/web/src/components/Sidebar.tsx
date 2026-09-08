@@ -1,7 +1,9 @@
 "use client";
 
 import { Button, Tooltip } from "@heroui/react";
-import { IdCard, Landmark, PanelLeft } from "lucide-react";
+import { BoxIcon } from "@solar-icons/react/linear/box";
+import { PassportIcon } from "@solar-icons/react/linear/passport";
+import { SidebarMinimalisticIcon } from "@solar-icons/react/linear/sidebar-minimalistic";
 import Image from "next/image";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,8 +11,8 @@ import { SidebarProfile } from "@/components/SidebarProfile";
 import { useState } from "react";
 
 const routes = [
-  { href: "/dashboard", label: "Passport", icon: IdCard },
-  { href: "/dashboard/pool", label: "PassportPool", icon: Landmark },
+  { href: "/dashboard", label: "Passport", icon: PassportIcon },
+  { href: "/dashboard/pool", label: "PassportPool", icon: BoxIcon },
 ] as const;
 
 /**
@@ -143,7 +145,7 @@ export function Sidebar() {
             variant="ghost"
             onPress={() => setIsCollapsed((v) => !v)}
           >
-            <PanelLeft />
+            <SidebarMinimalisticIcon />
           </Button>
         </div>
 

@@ -1,6 +1,6 @@
 import { Typography } from "@heroui/react";
 import { buttonVariants } from "@heroui/styles";
-import { ChevronRight } from "lucide-react";
+import { AltArrowRightIcon } from "@solar-icons/react/linear/alt-arrow-right";
 import Image from "next/image";
 import NextLink from "next/link";
 
@@ -90,7 +90,7 @@ export default function LandingPage() {
           href="/dashboard"
         >
           Explore the New Era of Credit Lending
-          <ChevronRight />
+          <AltArrowRightIcon />
         </NextLink>
 
         <Typography type="body-sm" color="muted" align="center">

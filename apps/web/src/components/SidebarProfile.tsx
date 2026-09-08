@@ -1,7 +1,8 @@
 "use client";
 
 import { Avatar, Button, Tooltip } from "@heroui/react";
-import { LogOut, User } from "lucide-react";
+import { Logout2Icon } from "@solar-icons/react/linear/logout-2";
+import { UserIcon } from "@solar-icons/react/linear/user";
 import { useAccount, useDisconnect } from "wagmi";
 import { usePassportScore } from "@/hooks/usePassportScore";
 import { shortAddress } from "@/lib/address";
@@ -26,7 +27,7 @@ export function SidebarProfile({ isCollapsed = false }: { isCollapsed?: boolean 
   const avatar = (
     <Avatar>
       <Avatar.Fallback className="bg-accent text-accent-foreground">
-        <User />
+        <UserIcon />
       </Avatar.Fallback>
     </Avatar>
   );
@@ -64,7 +65,7 @@ export function SidebarProfile({ isCollapsed = false }: { isCollapsed?: boolean 
                 variant="ghost"
                 onPress={() => disconnect()}
               >
-                <LogOut />
+                <Logout2Icon />
               </Button>
             </Tooltip.Trigger>
             <Tooltip.Content placement="top">Disconnect</Tooltip.Content>

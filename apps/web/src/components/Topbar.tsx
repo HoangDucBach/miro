@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Drawer, useOverlayState } from "@heroui/react";
-import { Menu } from "lucide-react";
+import { HamburgerMenuIcon } from "@solar-icons/react/linear/hamburger-menu";
 import { ConnectButton } from "@/components/ConnectButton";
 import { BrandMark, NavLinks } from "@/components/Sidebar";
 import { SidebarProfile } from "@/components/SidebarProfile";
@@ -19,7 +19,7 @@ export function Topbar() {
       {/* Below `md` there is no rail, so the brand and the drawer trigger surface here. */}
       <div className="flex items-center gap-2 md:hidden">
         <Button aria-label="Open navigation" size="sm" variant="ghost" onPress={drawer.open}>
-          <Menu className="size-4" />
+          <HamburgerMenuIcon className="size-4" />
         </Button>
         <BrandMark className="h-5" />
       </div>
