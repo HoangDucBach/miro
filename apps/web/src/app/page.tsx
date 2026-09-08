@@ -36,9 +36,6 @@ export default function LandingPage() {
         className="pointer-events-none absolute -top-1/3 -right-1/4 -z-10 w-[120%] max-w-none opacity-40 invert md:w-[70%]"
       />
 
-      {/* Decorative accent. Hidden below `md`: at phone widths it would sit on top of the
-       * headline rather than beside it. */}
-
       <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
         {/* The lockup's wordmark is already the site name, so the mark alone would leave
          * the page without one in text. The alt carries it instead. */}
@@ -70,13 +67,15 @@ export default function LandingPage() {
           Deposit, borrow, repay, or lend — every action here also builds your{" "}
           <span className="text-accent">passport</span>.
         </Typography>
+        {/* Decoration, so empty alt plus aria-hidden. Hidden below `md`, where the
+         * viewport is short enough that it would push the CTA off-screen. */}
         <Image
           src="/coin-3d.png"
           alt=""
           aria-hidden
           width={800}
           height={800}
-          className="pointer-events-none -z-10 hidden size-40 md:block lg:left-24 lg:size-48"
+          className="pointer-events-none hidden size-40 md:block lg:size-48"
         />
       </div>
 
