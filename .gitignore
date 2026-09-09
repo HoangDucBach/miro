@@ -23,3 +23,6 @@ apps/worker/.data/
 # misc
 .DS_Store
 *.log
+
+# Submission drafts — kept local, not part of the public repo
+docs/dorahacks-submission.md

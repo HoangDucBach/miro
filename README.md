@@ -8,8 +8,7 @@ it is verified on-chain by Creditcoin's Block Prover Precompile.
 
 > BUIDL CTC 2026 Fall — DeFi Track.
 > [Product spec](docs/product-spec.md) · [Technical spec](docs/technical-spec.md) ·
-> [Attestcoin integration](docs/attestcoin-integration.md) ·
-> [Submission copy](docs/dorahacks-submission.md)
+> [Attestcoin integration](docs/attestcoin-integration.md)
 
 ## The problem
 
