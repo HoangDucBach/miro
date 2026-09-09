@@ -10,18 +10,13 @@
 
 ## 1. Vision
 
-> *Describe the problem which this project solves.* **125 / 125 words.**
+> *Describe the problem which this project solves.* The form caps this at **256
+> characters**, not words — the long-form version lives in
+> [product-spec.md §1.2](./product-spec.md).
 
-A borrower who has repaid every loan on Aave has earned trust — but that trust is stranded
-on the chain where it was earned. No lender elsewhere can see it without trusting a bridge
-to move the data, or an operator to vouch for it. So every new lending relationship
-restarts at zero, and DeFi falls back on the only thing it can verify locally:
-over-collateralization. Careful borrowers and reckless ones post identical collateral.
+Repayment history is trapped on the chain where it was earned. No lender elsewhere can verify it without trusting a bridge or an oracle. So every loan starts from zero, and DeFi falls back on over-collateralization: good borrowers pay for bad ones.
 
-Miro makes repayment history portable. Real Repay events from unmodified Aave V3 and
-Morpho Blue are proven onto Creditcoin through the Attestcoin Protocol's Block Prover
-Precompile — no bridge, no trusted reporter. The result is one on-chain credit passport
-any lender can read, and that better borrowers can actually spend.
+*248 / 256 characters.*
 
 ---
 
