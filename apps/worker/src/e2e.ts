@@ -70,7 +70,10 @@ async function main() {
   const poolOwnerCC = new Wallet(poolOwnerKey, cc);
 
   // Fresh borrower per run so replays and the demo score progression stay legible.
-  const borrower = Wallet.createRandom();
+  // E2E_BORROWER_PRIVATE_KEY overrides that when the point is to build history on a
+  // specific wallet -- a dashboard you can actually open, rather than a throwaway.
+  const borrowerKey = process.env.E2E_BORROWER_PRIVATE_KEY;
+  const borrower = borrowerKey ? new Wallet(borrowerKey) : Wallet.createRandom();
   const borrowerSepolia = borrower.connect(source);
   const borrowerCC = borrower.connect(cc);
 
@@ -89,11 +92,17 @@ async function main() {
 
   console.log(`[e2e] deployer=${deployerSepolia.address} borrower=${borrower.address}`);
 
-  console.log("[e2e] 0/9 funding the fresh borrower wallet for gas...");
-  const fundSepoliaTx = await deployerSepolia.sendTransaction({ to: borrower.address, value: 50_000_000_000_000_000n });
-  await fundSepoliaTx.wait(2);
-  const fundCCTx = await new Wallet(deployerKey, cc).sendTransaction({ to: borrower.address, value: 60_000_000_000_000_000_000n });
-  await fundCCTx.wait(2);
+  // Skipped when the borrower is the deployer: funding an address from itself just burns
+  // gas to end up where it started.
+  if (borrower.address.toLowerCase() === deployerSepolia.address.toLowerCase()) {
+    console.log("[e2e] 0/9 borrower is the deployer, skipping the funding transfers");
+  } else {
+    console.log("[e2e] 0/9 funding the borrower wallet for gas...");
+    const fundSepoliaTx = await deployerSepolia.sendTransaction({ to: borrower.address, value: 50_000_000_000_000_000n });
+    await fundSepoliaTx.wait(2);
+    const fundCCTx = await new Wallet(deployerKey, cc).sendTransaction({ to: borrower.address, value: 60_000_000_000_000_000_000n });
+    await fundCCTx.wait(2);
+  }
 
   // 1. Register both Sepolia sources + the local PassportPool reporter, if this is the
   //    first run. Registration is config, not a redeploy -- see CreditPassport.setSource.
