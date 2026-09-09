@@ -37,7 +37,13 @@ export function useRepay() {
         chainId: cc3Testnet.id,
         args: [contracts.passportPool, amount],
       });
-      await waitForTransactionReceipt(config, { hash: approveHash, chainId: cc3Testnet.id });
+      const receipt = await waitForTransactionReceipt(config, { hash: approveHash, chainId: cc3Testnet.id });
+      // waitForTransactionReceipt resolves on a reverted approve too. Proceeding would
+      // send the second transaction into a revert for insufficient allowance, charging
+      // gas twice to report the same failure.
+      if (receipt.status === "reverted") {
+        throw new Error("The approval reverted on chain, so nothing was transferred.");
+      }
       await refetchAllowance();
     }
     return repayWrite.writeContractAsync({

@@ -34,8 +34,16 @@ export function useTransactionState(write: WriteState): TransactionState {
   const receipt = useWaitForTransactionReceipt({ hash, chainId: cc3Testnet.id });
   const queryClient = useQueryClient();
 
-  // Without this, a confirmed deposit/borrow/repay leaves the score and pool position
-  // showing pre-transaction values until the page is reloaded.
+  // A reverted transaction is not an error to viem: waitForTransactionReceipt resolves
+  // with `status: "reverted"` rather than throwing, so wagmi reports isSuccess === true
+  // and error === null. Taken at face value that shows the user "Confirmed" for a
+  // transaction that changed nothing. The receipt's own status is the source of truth.
+  const isReverted = receipt.data?.status === "reverted";
+  const isConfirmed = receipt.isSuccess && !isReverted;
+
+  // Refetched on either outcome. After a revert the chain state is unchanged, but the
+  // page may have been showing an optimistic figure, and re-reading is how it gets back
+  // to what is actually true.
   useEffect(() => {
     if (receipt.isSuccess) {
       void queryClient.invalidateQueries();
@@ -44,7 +52,12 @@ export function useTransactionState(write: WriteState): TransactionState {
 
   return {
     isPending: isSubmitting || (Boolean(hash) && receipt.isLoading),
-    isConfirmed: receipt.isSuccess,
-    error: writeError ?? receipt.error ?? null,
+    isConfirmed,
+    error:
+      writeError ??
+      receipt.error ??
+      (isReverted
+        ? new Error("The transaction reverted on chain and changed nothing.")
+        : null),
   };
 }

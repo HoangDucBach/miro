@@ -3,6 +3,7 @@
 import { Button, Spinner, Tooltip } from "@heroui/react";
 import { HandMoneyIcon } from "@solar-icons/react/linear/hand-money";
 import { formatCooldown, useFaucet } from "@/hooks/useFaucet";
+import { errorText } from "@/lib/errors";
 import { formatToken } from "@/lib/format";
 
 /**
@@ -17,13 +18,7 @@ export function FaucetButton() {
   // about what the button does.
   const label = faucetAmount > 0n ? `Get ${formatToken(faucetAmount, 6, 0)} tUSDC` : "Get test tUSDC";
 
-  // viem errors carry a one-line `shortMessage` alongside a message that runs to hundreds
-  // of characters of ABI and request dump -- unreadable in a tooltip. Fall back to a
-  // trimmed message only when the short form is absent.
-  const reason =
-    error && "shortMessage" in error && typeof error.shortMessage === "string"
-      ? error.shortMessage
-      : error?.message.split("\n")[0].slice(0, 140);
+  const reason = errorText(error);
 
   const help = reason ?? (isReady ? "Mints test tUSDC to your wallet" : `Next claim in ${formatCooldown(secondsLeft)}`);
 

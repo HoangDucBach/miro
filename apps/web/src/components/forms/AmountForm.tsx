@@ -10,8 +10,10 @@ import {
   Spinner,
   TextField,
 } from "@heroui/react";
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { parseUnits } from "viem";
+import { errorText } from "@/lib/errors";
 import { formatToken } from "@/lib/format";
 import { amountSchema, type AmountFormValues } from "@/schemas/forms";
 
@@ -61,7 +63,13 @@ export function AmountForm({
     formState: { errors },
   } = useForm<AmountFormValues>({ resolver: zodResolver(amountSchema), defaultValues: { amount: "" } });
 
+  // Errors thrown by the action itself, as opposed to those wagmi records on its own
+  // hooks. The two-step actions throw from waitForTransactionReceipt, which no hook
+  // watches -- swallowing those left a failed approve showing nothing but a spinner.
+  const [thrownError, setThrownError] = useState<Error | null>(null);
+
   async function submit(values: AmountFormValues) {
+    setThrownError(null);
     const amountWei = parseUnits(values.amount, decimals);
 
     // Checked against the ceiling before submitting: every one of these actions reverts
@@ -85,7 +93,7 @@ export function AmountForm({
     }
   }
 
-  const message = errors.amount?.message ?? error?.message;
+  const message = errors.amount?.message ?? errorText(thrownError) ?? errorText(error);
 
   return (
     <form className="border-default rounded-xl border p-4" onSubmit={handleSubmit(submit)}>
