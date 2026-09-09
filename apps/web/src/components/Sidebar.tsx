@@ -8,15 +8,16 @@ import { SidebarMinimalisticIcon } from "@solar-icons/react/linear/sidebar-minim
 import Image from "next/image";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
+import { NavHighlight } from "@/components/ui/motion";
 import { SidebarProfile } from "@/components/SidebarProfile";
 import { useState } from "react";
 
-// Order and labels follow the reference: Pools first, then Passport. The hrefs do not
-// change -- /dashboard is still the passport view.
+// Passport first: it is the index route and the thing the product is about. Pools and
+// Lend are what a score is spent on, so they follow it.
 const routes = [
+  { href: "/dashboard", label: "Passport", icon: PassportIcon },
   { href: "/dashboard/pool", label: "Pools", icon: BoxIcon },
   { href: "/dashboard/lend", label: "Lend", icon: HandMoneyIcon },
-  { href: "/dashboard", label: "Passport", icon: PassportIcon },
 ] as const;
 
 /**
@@ -83,18 +84,21 @@ export function NavLinks({
             onClick={onNavigate}
             // The highlight is purely visual; aria-current is what carries it to a screen reader.
             aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-3 rounded-lg py-2 text-sm transition-colors ${
+            className={`relative flex items-center gap-3 rounded-lg py-2 text-sm transition-colors ${
               isCollapsed ? "justify-center px-2" : "px-3"
             } ${
               active
-                ? "bg-default text-foreground font-medium"
+                ? "text-foreground font-medium"
                 : "text-muted hover:bg-default hover:text-foreground"
             }`}
           >
-            <Icon className="size-4 shrink-0" />
+            {/* Behind the label, not around it: the highlight is one element sliding
+             * between rows, so it must not carry the text with it. */}
+            <NavHighlight isActive={active} />
+            <Icon className="relative size-4 shrink-0" />
             {/* Kept in the DOM rather than dropped: collapsed, the icon alone would leave
              * the link with no accessible name at all. */}
-            <span className={isCollapsed ? "sr-only" : undefined}>{label}</span>
+            <span className={isCollapsed ? "sr-only" : "relative"}>{label}</span>
           </NextLink>
         );
 

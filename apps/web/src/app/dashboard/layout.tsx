@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
+import { PageTransition } from "@/components/ui/motion";
 
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   return (
@@ -28,7 +29,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
             its content and pushes the layout wider than the viewport instead of wrapping. */}
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar />
-          {children}
+          <PageTransition>{children}</PageTransition>
         </div>
       </div>
     </>

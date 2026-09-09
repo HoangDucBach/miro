@@ -7,7 +7,6 @@ import NextLink from "next/link";
 import { useAccount } from "wagmi";
 import { FaucetButton } from "@/components/FaucetButton";
 import { Loadable } from "@/components/ui/Loadable";
-import { FadeIn } from "@/components/ui/FadeIn";
 import { ActionModal } from "@/components/pool/ActionModal";
 import { useLpDeposit } from "@/hooks/useLpDeposit";
 import { useLpPosition } from "@/hooks/useLpPosition";
@@ -58,7 +57,6 @@ export default function LendPage() {
         {isConnected ? <FaucetButton /> : null}
       </div>
 
-      <FadeIn>
       {isConnected ? (
         <Card className="border-default shadow-panel border border-solid" variant="transparent">
           <Card.Header className="flex w-full flex-row flex-wrap items-end justify-between gap-6">
@@ -172,7 +170,6 @@ export default function LendPage() {
           </Card.Header>
         </Card>
       )}
-      </FadeIn>
     </main>
   );
 }

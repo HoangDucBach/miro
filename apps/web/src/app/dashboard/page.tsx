@@ -1,7 +1,6 @@
 import { Typography } from "@heroui/react";
 import type { Metadata } from "next";
 import { ScoreCard } from "@/components/ScoreCard";
-import { FadeIn } from "@/components/ui/FadeIn";
 import { SourceBreakdown } from "@/components/SourceBreakdown";
 
 export const metadata: Metadata = { title: "Passport" };
@@ -16,12 +15,10 @@ export default function DashboardPage() {
         Passport Protocol — no bridge, no oracle operator. This is your portable score.
       </Typography>
 
-      <FadeIn>
         <div className="flex flex-col gap-5">
           <ScoreCard />
           <SourceBreakdown />
         </div>
-      </FadeIn>
     </main>
   );
 }

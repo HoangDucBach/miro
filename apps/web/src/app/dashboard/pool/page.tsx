@@ -9,7 +9,6 @@ import { useAccount } from "wagmi";
 import { FaucetButton } from "@/components/FaucetButton";
 import { ActionModal } from "@/components/pool/ActionModal";
 import { Loadable } from "@/components/ui/Loadable";
-import { FadeIn } from "@/components/ui/FadeIn";
 import { PositionTabs } from "@/components/pool/PositionTabs";
 import { useBorrow } from "@/hooks/useBorrow";
 import { useDepositCollateral } from "@/hooks/useDepositCollateral";
@@ -95,7 +94,6 @@ export default function PoolPage() {
         {isConnected ? <FaucetButton /> : null}
       </div>
 
-      <FadeIn>
       {isConnected ? (
         <Card className="border-default shadow-panel border border-solid" variant="transparent">
           {/* transparent + an explicit border: .card--transparent sets border-style:none,
@@ -264,7 +262,6 @@ export default function PoolPage() {
           </Card.Header>
         </Card>
       )}
-      </FadeIn>
     </main>
   );
 }

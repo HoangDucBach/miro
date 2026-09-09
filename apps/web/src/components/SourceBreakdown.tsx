@@ -3,6 +3,7 @@
 import { Card, Skeleton } from "@heroui/react";
 import { useAccount } from "wagmi";
 import { usePassportSources } from "@/hooks/usePassportSources";
+import { Stagger, StaggerItem } from "@/components/ui/motion";
 
 export function SourceBreakdown() {
   const { isConnected } = useAccount();
@@ -38,8 +39,10 @@ export function SourceBreakdown() {
             No sources registered, or this RPC would not serve the registration logs.
           </Card.Description>
         ) : (
-          sources.map((s) => (
-            <div key={s.sourceId} className="flex items-baseline justify-between gap-4 text-sm">
+          <Stagger>
+            {sources.map((s) => (
+              <StaggerItem key={s.sourceId}>
+                <div className="flex items-baseline justify-between gap-4 py-1 text-sm">
               <span className={s.count > 0n ? undefined : "text-muted"}>{s.label}</span>
               <span className="flex items-baseline gap-3">
                 <span className="tabular-nums">
@@ -50,9 +53,11 @@ export function SourceBreakdown() {
                     ? new Date(Number(s.lastAt) * 1000).toLocaleDateString()
                     : "never"}
                 </span>
-              </span>
-            </div>
-          ))
+                  </span>
+                </div>
+              </StaggerItem>
+            ))}
+          </Stagger>
         )}
       </Card.Content>
 
