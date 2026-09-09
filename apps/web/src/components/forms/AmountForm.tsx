@@ -1,10 +1,18 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, Description, FieldError, Input, Label, Spinner, TextField } from "@heroui/react";
+import {
+  Button,
+  Description,
+  FieldError,
+  InputGroup,
+  Label,
+  Spinner,
+  TextField,
+} from "@heroui/react";
 import { Controller, useForm } from "react-hook-form";
 import { parseUnits } from "viem";
-import { formatAmount } from "@/lib/pool";
+import { formatToken } from "@/lib/format";
 import { amountSchema, type AmountFormValues } from "@/schemas/forms";
 
 interface AmountFormProps {
@@ -49,12 +57,25 @@ export function AmountForm({
     control,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm<AmountFormValues>({ resolver: zodResolver(amountSchema), defaultValues: { amount: "" } });
 
   async function submit(values: AmountFormValues) {
+    const amountWei = parseUnits(values.amount, decimals);
+
+    // Checked against the ceiling before submitting: every one of these actions reverts
+    // when it exceeds its limit, and a revert costs gas to learn something the page
+    // already knew. Compared in wei, not on the formatted string, which is truncated.
+    if (available && amountWei > available.value) {
+      setError("amount", {
+        message: `Over ${available.label.toLowerCase()} (${formatToken(available.value, decimals)} ${available.symbol})`,
+      });
+      return;
+    }
+
     try {
-      await onSubmit(parseUnits(values.amount, decimals));
+      await onSubmit(amountWei);
       reset();
     } catch {
       // Wallet rejection / revert already surfaces through the `error` prop below, which
@@ -81,7 +102,15 @@ export function AmountForm({
           >
             <Label>{label}</Label>
             <div className="flex gap-2">
-              <Input className="flex-1" inputMode="decimal" placeholder="0.0" ref={field.ref} />
+              {/* InputGroup rather than HeroUI's NumberField: NumberField hands back a JS
+                  number, and this value is deliberately a string all the way to
+                  parseUnits -- a float round-trip loses precision on large amounts and
+                  turns small ones into "1e-7", which parseUnits rejects. The suffix gets
+                  the unit out of the placeholder and into the field itself. */}
+              <InputGroup className="flex-1">
+                <InputGroup.Input inputMode="decimal" placeholder="0.0" ref={field.ref} />
+                {available ? <InputGroup.Suffix>{available.symbol}</InputGroup.Suffix> : null}
+              </InputGroup>
               <Button className="shrink-0" isPending={isPending} type="submit">
                 {isPending ? <Spinner color="current" size="sm" /> : null}
                 {isPending ? "Submitting…" : submitLabel}
@@ -91,7 +120,7 @@ export function AmountForm({
                 aria-describedby, rather than floating as unassociated text. */}
             {available ? (
               <Description className="tabular-nums">
-                {available.label} {formatAmount(available.value, decimals)} {available.symbol}
+                {available.label} {formatToken(available.value, decimals)} {available.symbol}
               </Description>
             ) : null}
             {message ? <FieldError>{message}</FieldError> : null}

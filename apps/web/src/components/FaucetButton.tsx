@@ -3,7 +3,7 @@
 import { Button, Spinner, Tooltip } from "@heroui/react";
 import { HandMoneyIcon } from "@solar-icons/react/linear/hand-money";
 import { formatCooldown, useFaucet } from "@/hooks/useFaucet";
-import { formatAmount } from "@/lib/pool";
+import { formatToken } from "@/lib/format";
 
 /**
  * Testnet tUSDC on demand. Disabled rather than hidden during the cooldown, with the wait
@@ -15,7 +15,7 @@ export function FaucetButton() {
 
   // Until FAUCET_AMOUNT is read the value is 0, and "Get 0 tUSDC" states something false
   // about what the button does.
-  const label = faucetAmount > 0n ? `Get ${formatAmount(faucetAmount, 6, 0)} tUSDC` : "Get test tUSDC";
+  const label = faucetAmount > 0n ? `Get ${formatToken(faucetAmount, 6, 0)} tUSDC` : "Get test tUSDC";
 
   // viem errors carry a one-line `shortMessage` alongside a message that runs to hundreds
   // of characters of ABI and request dump -- unreadable in a tooltip. Fall back to a

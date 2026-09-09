@@ -13,7 +13,7 @@ import { useLpDeposit } from "@/hooks/useLpDeposit";
 import { useLpPosition } from "@/hooks/useLpPosition";
 import { useLpWithdraw } from "@/hooks/useLpWithdraw";
 import { lentOut, redeemableValue, utilisationBps } from "@/lib/lend";
-import { formatAmount, formatBps } from "@/lib/pool";
+import { formatPercent, formatToken, formatUsd } from "@/lib/format";
 
 const DECIMALS = 6; // tUSDC
 
@@ -41,7 +41,7 @@ export default function LendPage() {
   // Signed: negative means part of the deposit is out on loan, not that value was lost.
   const delta = redeemable - lpDeposit;
 
-  const usd = (v: bigint) => `$${formatAmount(v, DECIMALS, 2)}`;
+  const usd = (v: bigint) => formatUsd(v, DECIMALS);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 px-6 py-8">
@@ -90,7 +90,7 @@ export default function LendPage() {
                 </span>
                 <div className="flex items-center gap-3">
                   <Loadable className="h-5 w-12 rounded" isLoading={isLoading}>
-                    <span className="text-sm tabular-nums">{formatBps(utilisation)}</span>
+                    <span className="text-sm tabular-nums">{formatPercent(utilisation)}</span>
                   </Loadable>
                   <Chip color={utilisation < 5_000n ? "success" : utilisation < 8_000n ? "warning" : "danger"}>
                     {utilisation < 5_000n ? "Liquid" : utilisation < 8_000n ? "Tight" : "Strained"}
@@ -125,7 +125,7 @@ export default function LendPage() {
               <div>
                 <Loadable className="h-9 w-56 rounded-xl sm:h-10" isLoading={isLoading}>
                   <p className="text-3xl font-semibold tabular-nums sm:text-4xl">
-                    {formatAmount(lpDeposit, DECIMALS, 2)} tUSDC
+                    {formatToken(lpDeposit, DECIMALS, 2)} tUSDC
                   </p>
                 </Loadable>
                 <div className="mt-2">

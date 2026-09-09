@@ -50,9 +50,9 @@ export function ScoreCard() {
       <Card.Header className="gap-1 px-2">
         <Card.Description>Credit passport score</Card.Description>
         <Loadable className="h-12 w-28 rounded-xl" isLoading={isLoading}>
-          <Card.Title className="text-5xl font-semibold tabular-nums">
+          <p className="text-5xl font-semibold tabular-nums">
             {score.toString()}
-          </Card.Title>
+          </p>
         </Loadable>
       </Card.Header>
 

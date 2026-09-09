@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  borrowable,
-  formatAmount,
-  formatBps,
-  ltvBps,
-  riskLevel,
-  withdrawableCollateral,
-} from "./pool";
+import { borrowable, ltvBps, riskLevel, withdrawableCollateral } from "./pool";
 
 describe("ltvBps", () => {
   it("is debt over the pool's valuation of collateral", () => {
@@ -85,37 +78,5 @@ describe("riskLevel", () => {
     expect(riskLevel(3_750n, 7_500n)).toBe("Medium");
     expect(riskLevel(5_999n, 7_500n)).toBe("Medium");
     expect(riskLevel(6_000n, 7_500n)).toBe("High");
-  });
-});
-
-describe("formatBps", () => {
-  it("drops the decimal on whole percentages", () => {
-    expect(formatBps(7_500n)).toBe("75%");
-  });
-
-  it("keeps one place otherwise", () => {
-    expect(formatBps(1_875n)).toBe("18.8%");
-  });
-});
-
-describe("formatAmount", () => {
-  it("groups thousands", () => {
-    expect(formatAmount(1_234_567_000_000n, 6)).toBe("1,234,567");
-  });
-
-  it("truncates rather than rounds up", () => {
-    // Rounding a withdrawable figure up invites a transaction that reverts for
-    // exceeding it.
-    expect(formatAmount(27_999_900n, 6, 2)).toBe("27.99");
-  });
-
-  it("drops trailing zeroes", () => {
-    expect(formatAmount(1_500_000n, 6)).toBe("1.5");
-  });
-
-  it("keeps whole parts past 2^53 exact", () => {
-    // Number() would round this; the grouping runs on the digit string instead.
-    const huge = 12_345_678_901_234_567_890n * 10n ** 18n;
-    expect(formatAmount(huge, 18)).toBe("12,345,678,901,234,567,890");
   });
 });

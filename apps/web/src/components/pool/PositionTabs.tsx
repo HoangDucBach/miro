@@ -3,6 +3,7 @@
 import { Tabs } from "@heroui/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
+import { SwapIn } from "@/components/ui/FadeIn";
 
 const TAB_IDS = ["collateral", "loan"] as const;
 type TabId = (typeof TAB_IDS)[number];
@@ -52,10 +53,10 @@ export function PositionTabs({ collateral, loan }: { collateral: ReactNode; loan
       </Tabs.ListContainer>
 
       <Tabs.Panel className="pt-4" id="collateral">
-        {collateral}
+        <SwapIn motionKey="collateral">{collateral}</SwapIn>
       </Tabs.Panel>
       <Tabs.Panel className="pt-4" id="loan">
-        {loan}
+        <SwapIn motionKey="loan">{loan}</SwapIn>
       </Tabs.Panel>
     </Tabs>
   );

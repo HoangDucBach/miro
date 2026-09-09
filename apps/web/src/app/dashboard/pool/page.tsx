@@ -17,14 +17,8 @@ import { usePassportPoolPosition } from "@/hooks/usePassportPoolPosition";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useRepay } from "@/hooks/useRepay";
 import { useWithdrawCollateral } from "@/hooks/useWithdrawCollateral";
-import {
-  borrowable,
-  formatAmount,
-  formatBps,
-  ltvBps,
-  riskLevel,
-  withdrawableCollateral,
-} from "@/lib/pool";
+import { formatPercent, formatToken, formatUsd } from "@/lib/format";
+import { borrowable, ltvBps, riskLevel, withdrawableCollateral } from "@/lib/pool";
 
 const COLLATERAL_DECIMALS = 18; // tCTC
 const DEBT_DECIMALS = 6; // tUSDC
@@ -114,15 +108,15 @@ export default function PoolPage() {
             <div>
               <Loadable className="h-10 w-40 rounded-xl" isLoading={isLoading}>
                 <p className="text-accent text-4xl font-semibold tabular-nums">
-                  ${formatAmount(debt, DEBT_DECIMALS, 2)}
+                  {formatUsd(debt, DEBT_DECIMALS)}
                 </p>
               </Loadable>
               <p className="text-muted mt-1 text-sm">Debt</p>
             </div>
             <div className="flex gap-8">
-              <Stat label="Collateral" value={formatAmount(collateral, COLLATERAL_DECIMALS, 2)} isLoading={isLoading} />
-              <Stat label="Credit Limit" value={`$${formatAmount(creditLimit, DEBT_DECIMALS, 2)}`} isLoading={isLoading} />
-              <Stat label="Max LTV" value={formatBps(maxLtvBps)} isLoading={isLoading} />
+              <Stat label="Collateral" value={formatToken(collateral, COLLATERAL_DECIMALS, 2)} isLoading={isLoading} />
+              <Stat label="Credit Limit" value={formatUsd(creditLimit, DEBT_DECIMALS)} isLoading={isLoading} />
+              <Stat label="Max LTV" value={formatPercent(maxLtvBps)} isLoading={isLoading} />
             </div>
           </Card.Header>
 
@@ -140,7 +134,7 @@ export default function PoolPage() {
                 </span>
                 <div className="flex items-center gap-3">
                   <Loadable className="h-5 w-12 rounded" isLoading={isLoading}>
-                    <span className="text-sm tabular-nums">{formatBps(ltv)}</span>
+                    <span className="text-sm tabular-nums">{formatPercent(ltv)}</span>
                   </Loadable>
                   <Chip
                     color={risk === "Low" ? "success" : risk === "Medium" ? "warning" : "danger"}
@@ -165,7 +159,7 @@ export default function PoolPage() {
                     <Meter.Fill />
                   </Meter.Track>
                 </Meter>
-                <span className="text-muted text-xs tabular-nums">{formatBps(maxLtvBps)}</span>
+                <span className="text-muted text-xs tabular-nums">{formatPercent(maxLtvBps)}</span>
               </div>
             </div>
 
@@ -177,8 +171,8 @@ export default function PoolPage() {
                 collateral={
                   <PositionPanel
                     isLoading={isLoading}
-                    balance={`${formatAmount(collateral, COLLATERAL_DECIMALS)} tCTC`}
-                    headroom={`${formatAmount(withdrawableCollateral(collateral, debt, creditLimit), COLLATERAL_DECIMALS)} tCTC`}
+                    balance={`${formatToken(collateral, COLLATERAL_DECIMALS)} tCTC`}
+                    headroom={`${formatToken(withdrawableCollateral(collateral, debt, creditLimit), COLLATERAL_DECIMALS)} tCTC`}
                     headroomLabel="Withdrawable"
                     actions={
                       <>
@@ -216,8 +210,8 @@ export default function PoolPage() {
                 loan={
                   <PositionPanel
                     isLoading={isLoading}
-                    balance={`${formatAmount(debt, DEBT_DECIMALS, 2)} tUSDC`}
-                    headroom={`${formatAmount(borrowable(debt, creditLimit), DEBT_DECIMALS, 2)} tUSDC`}
+                    balance={`${formatToken(debt, DEBT_DECIMALS, 2)} tUSDC`}
+                    headroom={`${formatToken(borrowable(debt, creditLimit), DEBT_DECIMALS, 2)} tUSDC`}
                     headroomLabel="Borrowable"
                     actions={
                       <>
