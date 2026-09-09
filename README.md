@@ -1,130 +1,120 @@
 # Miro
 
-A cross-chain credit passport. Real repayments on real lending protocols — Aave V3 and
-Morpho Blue on Ethereum Sepolia, in this build — get attested onto Creditcoin via the
-[Attestcoin Protocol](https://creditcoin.org): no bridge, no oracle operator, just a
-cryptographic proof of what actually happened. The result is one portable score any
-lender can read. Our own reference pool reads it to grant a better rate, and reports back
-into the same passport it reads from — credit built anywhere is usable there, and credit
-built there is usable anywhere else that reads it.
+A portable credit passport. Repayments made on real lending protocols on one chain are
+proven onto Creditcoin and become credit a lender on another chain can actually read.
 
-> **BUIDL CTC 2026 Fall — DeFi Track.** Full spec: [docs/product-spec.md](docs/product-spec.md)
-> · [docs/technical-spec.md](docs/technical-spec.md) · required deep-dive:
-> [docs/attestcoin-integration.md](docs/attestcoin-integration.md).
+No bridge moves funds. No oracle operator signs anything. The proof is cryptographic, and
+it is verified on-chain by Creditcoin's Block Prover Precompile.
 
-## Status
+> BUIDL CTC 2026 Fall — DeFi Track.
+> [Product spec](docs/product-spec.md) · [Technical spec](docs/technical-spec.md) ·
+> [Attestcoin integration](docs/attestcoin-integration.md) ·
+> [Submission copy](docs/dorahacks-submission.md)
 
-Second pivot: from collateral-based designs (salary streams, then token vesting) to a
-cross-chain credit passport — the one idea that genuinely can't be reproduced without
-Creditcoin (see
-[technical-spec.md §2.10](docs/technical-spec.md#210-migration-to-the-cross-chain-credit-passport-current-design)).
-Contracts and worker are fully tested locally (126 tests total: 86 `contracts/creditcoin`,
-12 `contracts/source`, 28 `apps/worker`), deployed live to Sepolia + CC3 Testnet, and
-verified end to end with a real run of `apps/worker/src/e2e.ts`: a real Aave V3 repay and
-a real Morpho Blue repay were each attested and verified on-chain, taking the passport
-score from 0 → 10 → 40 → 70 across two cross-chain sources plus the local PassportPool
-feedback loop — see
-[docs/attestcoin-integration.md](docs/attestcoin-integration.md#live-e2e-run--2026-08-27)
-for the full run log and the addresses it ran against. `apps/web` is scaffolded: a
-Next.js dashboard reading a live `scoreOf()` and driving `PassportPool` (deposit/borrow/
-repay/withdraw), typed hooks generated straight from `@miro/shared`'s ABIs — see
-[apps/web/README.md](apps/web/README.md).
+## The problem
 
-- [`contracts/creditcoin/src/libs/`](contracts/creditcoin/src/libs/) — `EvmV1Decoder.sol` and
-  `NativeQueryVerifier.sol` are vendored verbatim from the real reference implementation
-  (`@gluwa/usc-contracts@0.1.2`, `gluwa/attestcoin-protocol-examples`), pinned to the same
-  versions that repo's own `package.json` uses, with attribution headers. Not stubs.
-- [`apps/worker/src/lib/chain.ts`](apps/worker/src/lib/chain.ts) /
-  [`proof.ts`](apps/worker/src/lib/proof.ts) — written against and typechecked against the
-  real installed `@gluwa/usc-sdk@0.18.0` package. The full proof pipeline was run end to
-  end against the live network before any of our own contracts were deployed.
-- `CreditPassport.sol` decodes real `Repay` events from Aave V3 and Morpho Blue on Sepolia
-  through one config-driven mechanism (`SourceConfig`) — both events turned out to have
-  more indexed fields than a first glance would suggest, verified directly against each
-  protocol's own source, not assumed. See product-spec.md §1.6 for the trust model.
-- `forge script` doesn't work against CC3 Testnet (Foundry's local simulation panics on
-  a missing `prevrandao` header field this chain doesn't set). Deploying there needs
-  `forge create` per contract instead, see the deployment note linked above.
+Repayment history is trapped on the chain where it was earned. No lender elsewhere can
+verify it without trusting a bridge or an oracle. So every loan starts from zero, and DeFi
+falls back on over-collateralization: good borrowers pay for bad ones.
 
-## Repo layout
+## How it works
+
+1. A borrower repays a loan on **Aave V3** or **Morpho Blue** — real, unmodified protocols
+   on Ethereum Sepolia. Miro is not involved and asks nothing of anyone.
+2. A worker sees the `Repay` event, waits for the source block to be attested, fetches a
+   Merkle and continuity proof, and submits it to Creditcoin.
+3. **CreditPassport** verifies the proof on-chain and records the repayment. The score is
+   deterministic: repayments counted, source diversity, passport age, minus negative
+   events. No oracle, no discretion.
+4. **PassportPool**, a reference lender on Creditcoin, reads that score and raises the
+   borrower's loan-to-value ceiling from a 50% base toward a hard 75% cap. It reports its
+   own full repayments back into the same passport it reads from.
+
+Sources are configuration, not code. Registering a new protocol or a new source chain is
+one `setSource` call describing where the borrower and amount sit in that event's log.
+
+## Proof it runs
+
+One wallet, one passport, three independent sources — a real run against live testnets:
+
+| Step | Score | Max LTV |
+|---|---|---|
+| Local repayment on PassportPool | 10 | 51% |
+| Repay on Aave V3, proven cross-chain | 40 | — |
+| Repay on Morpho Blue, proven cross-chain | 70 | — |
+| Second local repayment | 80 | 58% |
+
+The same 1,000 tCTC of collateral backed a $500 credit line at score 0 and $580 at score
+80. The collateral did not change; the terms did.
+
+The two cross-chain proofs, verified on CC3 Testnet:
+
+- Aave `Repay` — `0x85ac6ad9c60b8b8b25d896eb1f62486b820747637af3232b956ddad869e20281`
+- Morpho `Repay` — `0x1ec083c125b85b4b1ef985051fececae3c2d0dc92765f52af9a67c1188da0d39`
+
+Deployed on CC3 Testnet (chain `102031`):
+
+| Contract | Address |
+|---|---|
+| CreditPassport | `0xF7F1E82CFA97d07812D8a61DD4c05B1C228f5851` |
+| PassportPool | `0x027a17E704B5641e6b2525415265133190b47FdB` |
+| TestUSDC | `0xc2706681eC25d9823882A7f80040579501d9bc16` |
+| PriceOracle | `0x78c46a57fc1c8d60570d48BFc1BBC8f490669c50` |
+
+Reproduce the whole path with `pnpm worker:e2e`.
+
+## Layout
 
 ```
-miro/
-├── contracts/
-│   ├── source/       # Foundry project — DemoToken.sol + FixedMorphoOracle.sol, bootstrap a demo Morpho market (Ethereum Sepolia)
-│   └── creditcoin/   # Foundry project — CreditPassport, PassportPool, TestUSDC, FixedPriceOracle (CC3 Testnet)
-├── packages/
-│   ├── shared/        # @miro/shared — ABIs, addresses, event topics, types
-│   └── config/        # shared tsconfig / eslint presets
-├── apps/
-│   ├── worker/         # @miro/worker — the Attestcoin relay (listeners → proof → submit)
-│   └── web/            # @miro/web — Next.js dashboard (passport score + PassportPool actions)
-└── docs/                # product spec, technical spec, integration writeup, demo script
+contracts/creditcoin   CreditPassport, PassportPool, TestUSDC, oracle (CC3 Testnet)
+contracts/source       Demo assets to bootstrap a Morpho market (Sepolia)
+apps/worker            Event listener, proof pipeline, submitter
+apps/web               Next.js dashboard: passport, borrowing, lending
+packages/shared        ABIs, addresses, event topics
+docs                   Specs, integration writeup, demo script
 ```
 
-Note: Aave V3 and Morpho Blue themselves are real, unmodified protocols, not part of this
-repo — `contracts/source` only holds the demo assets needed to bootstrap a fresh Morpho
-market (Aave needs no deploys at all, it uses Aave's own real testnet reserves).
+Aave V3 and Morpho Blue are not in this repo. They are real deployments, used unmodified —
+proving external repayment behaviour is the point, not reimplementing lending.
 
 ## Setup
 
-Requires [Foundry](https://getfoundry.sh) (`curl -L https://foundry.paradigm.xyz | bash && foundryup`),
-Node 20+ / pnpm 9+, and [Bun](https://bun.com) (`curl -fsSL https://bun.com/install | bash`) — the
-worker runs on Bun, tests still run on vitest.
+Needs Node 20+, pnpm 9+, [Foundry](https://getfoundry.sh), and [Bun](https://bun.com) for
+the worker.
 
 ```bash
-# TS workspace
 pnpm install
+cp .env.example .env          # RPC URLs, keys, deployed addresses
 
-# Contracts — each is an independent Foundry project (no shared code between chains).
-# --no-git avoids adding forge-std/openzeppelin as submodules of the outer repo; lib/ is
-# gitignored, so run this after every fresh clone.
-forge install foundry-rs/forge-std --no-git --root contracts/source
-forge install OpenZeppelin/openzeppelin-contracts@v5.7.0 --no-git --root contracts/source
+# Each contracts/ directory is an independent Foundry project.
 forge install foundry-rs/forge-std --no-git --root contracts/creditcoin
 forge install OpenZeppelin/openzeppelin-contracts@v5.7.0 --no-git --root contracts/creditcoin
-forge test --root contracts/source
 forge test --root contracts/creditcoin
-
-# Env
-cp .env.example .env   # fill in RPC URLs, private keys, deployed addresses
 ```
-
-Both projects build and their full test suites pass: 12/12 on `contracts/source`, 86/86 on
-`contracts/creditcoin` (98/98 total; plus 28/28 on `apps/worker`).
-
-## Deploying
 
 ```bash
-# 1. Sepolia — deploys the demo Morpho market assets (loan token, collateral token,
-#    oracle). Aave needs no deploy at all: it uses Aave's own real Sepolia Pool + Faucet.
-forge script contracts/source/script/Deploy.s.sol \
-  --rpc-url sepolia --private-key $DEPLOYER_PRIVATE_KEY --broadcast
-
-# 2. CC3 Testnet — deploys TestUSDC, FixedPriceOracle, CreditPassport, PassportPool
-forge script contracts/creditcoin/script/Deploy.s.sol \
-  --rpc-url cc3_testnet --private-key $CC3_DEPLOYER_PRIVATE_KEY --broadcast
-
-# 3. Register sources (Aave Repay, Morpho Repay) and the local reporter (PassportPool) on
-#    the passport -- config, not a redeploy. apps/worker/src/e2e.ts does this
-#    automatically on first run if they aren't registered yet.
+pnpm web           # dashboard
+pnpm worker        # relay Aave and Morpho repayments
+pnpm worker:e2e    # full end-to-end run
+pnpm test          # worker and web suites
 ```
 
-`forge script` works fine on Sepolia, but panics against CC3 Testnet (Foundry's local
-simulation needs a `prevrandao` header field this chain doesn't set). Use `forge create`
-per contract instead for step 2 — see
-[docs/attestcoin-integration.md](docs/attestcoin-integration.md#deployed-addresses) for
-the exact commands and real Aave/Morpho Sepolia addresses.
+Deployment commands, including why `forge script` needs replacing with `forge create` on
+CC3 Testnet, are in [docs/attestcoin-integration.md](docs/attestcoin-integration.md).
 
-## Running the worker
+## Limits
 
-```bash
-pnpm worker        # watches Aave + Morpho Repay events, relays proofs to CreditPassport
-pnpm worker:e2e     # scripted demo flow — see docs/demo-script.md
-```
+- **Sybil resistance is partial.** Cycling borrow-repay to farm score costs real gas and
+  interest, a per-source cap stops one protocol paying after ten counted repayments, and
+  only full repayments above a floor are reported. It is not eliminated, and this is the
+  largest un-mitigated risk in the design.
+- **No identity binding.** A borrower can abandon a wallet and start fresh. Self-limiting
+  rather than exploitable: a new wallet gets base terms.
+- **One source chain today.** CC3 Testnet attests Sepolia only. `chainKey` is resolved at
+  runtime and never hardcoded, so a second chain is configuration — but it is a present
+  limitation, not a solved problem.
+- **No liquidation engine.** Every position stays over-collateralized and LTV is capped at
+  75%, which is what makes that omission survivable at this stage.
 
-## Trust model
-
-State honestly, not oversold — see
-[docs/product-spec.md §1.6](docs/product-spec.md#16-trust--risk-model-state-honestly-in-submission)
-and [docs/attestcoin-integration.md](docs/attestcoin-integration.md).
+The full trust model is in
+[docs/product-spec.md §1.6](docs/product-spec.md#16-trust--risk-model-state-honestly-in-submission).
