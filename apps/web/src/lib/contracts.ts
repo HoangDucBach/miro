@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import { morphoMarketId, type MorphoMarketParams } from "./morpho";
 
 /**
  * Single place that resolves deployed contract addresses from NEXT_PUBLIC_* env vars.
@@ -40,29 +41,54 @@ export const contracts = {
  * above: a deployment that has not been pointed at Aave/Morpho still runs, it just hides
  * the cross-chain loans panel instead of throwing at module load.
  *
- * `morphoMarketId` is keccak256(abi.encode(marketParams)) for the demo market. It is
- * configured rather than derived so the client need not carry the oracle, IRM and LLTV
- * just to hash them -- apps/worker/src/e2e.ts derives the same id when it creates the market.
+ * More than the pool addresses, because the dashboard repays these loans as well as
+ * reading them: Aave needs the reserve asset to approve, its variable debt token to size
+ * the repayment exactly, and its public faucet to top up a wallet that is short; Morpho
+ * addresses a market by its five parameters on every write, and the id is derived from
+ * them (see lib/morpho.ts) rather than configured twice.
  */
 function optional(value: string | undefined): Address | null {
   return value ? (value as Address) : null;
 }
 
 const aavePool = optional(process.env.NEXT_PUBLIC_AAVE_POOL_CONTRACT);
+const aaveReserveAsset = optional(process.env.NEXT_PUBLIC_AAVE_RESERVE_ASSET_CONTRACT);
+const aaveVariableDebtToken = optional(process.env.NEXT_PUBLIC_AAVE_VARIABLE_DEBT_TOKEN);
+const aaveFaucet = optional(process.env.NEXT_PUBLIC_AAVE_FAUCET_CONTRACT);
+
 const morpho = optional(process.env.NEXT_PUBLIC_MORPHO_CONTRACT);
-const morphoMarketId = process.env.NEXT_PUBLIC_MORPHO_MARKET_ID as `0x${string}` | undefined;
 const morphoLoanToken = optional(process.env.NEXT_PUBLIC_MORPHO_LOAN_TOKEN_CONTRACT);
 const morphoCollateralToken = optional(process.env.NEXT_PUBLIC_MORPHO_COLLATERAL_TOKEN_CONTRACT);
+const morphoOracle = optional(process.env.NEXT_PUBLIC_MORPHO_ORACLE_CONTRACT);
+const morphoIrm = optional(process.env.NEXT_PUBLIC_MORPHO_IRM_CONTRACT);
+const morphoLltv = process.env.NEXT_PUBLIC_MORPHO_LLTV;
+
+const morphoMarket: MorphoMarketParams | null =
+  morphoLoanToken && morphoCollateralToken && morphoOracle && morphoIrm && morphoLltv
+    ? {
+        loanToken: morphoLoanToken,
+        collateralToken: morphoCollateralToken,
+        oracle: morphoOracle,
+        irm: morphoIrm,
+        lltv: BigInt(morphoLltv),
+      }
+    : null;
 
 export const sourceProtocols = {
-  aave: aavePool ? { pool: aavePool } : null,
-  morpho:
-    morpho && morphoMarketId && morphoLoanToken && morphoCollateralToken
+  aave:
+    aavePool && aaveReserveAsset && aaveVariableDebtToken
       ? {
-          morpho,
-          marketId: morphoMarketId,
-          loanToken: morphoLoanToken,
-          collateralToken: morphoCollateralToken,
+          pool: aavePool,
+          /** The asset supplied and borrowed in the demo flow -- LINK, 18 decimals. */
+          reserveAsset: aaveReserveAsset,
+          /** Rebasing debt token: its balanceOf IS the borrower's debt, interest included. */
+          variableDebtToken: aaveVariableDebtToken,
+          /** Public testnet faucet, or null where none is configured. */
+          faucet: aaveFaucet,
         }
+      : null,
+  morpho:
+    morpho && morphoMarket
+      ? { morpho, market: morphoMarket, marketId: morphoMarketId(morphoMarket) }
       : null,
 } as const;

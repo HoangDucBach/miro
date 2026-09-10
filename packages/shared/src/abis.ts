@@ -97,6 +97,13 @@ export const AAVE_POOL_ABI = [
   "event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)",
 ] as const;
 
+/** Aave's public testnet Faucet on Sepolia. Permissionless: any address may mint itself
+ *  reserve assets, which is what lets a borrower top up before repaying without an owner
+ *  key. Caps a single call at 10000 units of the asset. */
+export const AAVE_FAUCET_ABI = [
+  "function mint(address token, address to, uint256 amount) external returns (uint256)",
+] as const;
+
 /** Minimal surface of Morpho Blue's real, unmodified contract on Sepolia -- not ours.
  *  Repay's indexed fields verified 2026-08-27 against morpho-org/morpho-blue's
  *  EventsLib.sol: id, caller AND onBehalf are all indexed; only assets and shares are

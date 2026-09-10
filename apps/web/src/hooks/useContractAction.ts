@@ -27,11 +27,16 @@ export interface TransactionState {
  * and there's no honest way to generalize "call writeContractAsync" without losing that
  * type safety.
  */
-export function useTransactionState(write: WriteState): TransactionState {
+export function useTransactionState(
+  write: WriteState,
+  /** Chain the transaction was sent to. Defaults to CC3, where most of this app writes. */
+  chainId: number = cc3Testnet.id,
+): TransactionState {
   const { data: hash, error: writeError, isPending: isSubmitting } = write;
-  // chainId pinned: every mutating action in this app targets CC3 Testnet, and the
-  // wallet may well be switched to Sepolia (mid-Aave/Morpho flow) when one lands.
-  const receipt = useWaitForTransactionReceipt({ hash, chainId: cc3Testnet.id });
+  // chainId pinned rather than taken from the connected wallet: the wallet may be switched
+  // away (to Sepolia mid-repay, or back to CC3 afterwards) before the receipt lands, and
+  // watching the wrong chain would wait forever on a hash that is not there.
+  const receipt = useWaitForTransactionReceipt({ hash, chainId });
   const queryClient = useQueryClient();
 
   // A reverted transaction is not an error to viem: waitForTransactionReceipt resolves

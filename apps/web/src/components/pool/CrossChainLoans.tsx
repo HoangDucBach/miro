@@ -5,7 +5,9 @@ import { useAccount } from "wagmi";
 import { Loadable } from "@/components/ui/Loadable";
 import { ProtocolIcon } from "@/components/ui/ProtocolIcon";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
+import { useRepayAave, useRepayMorpho } from "@/hooks/useRepayCrossChain";
 import { useCrossChainLoans, type CrossChainLoan } from "@/hooks/useCrossChainLoans";
+import { RepayLoanModal } from "./RepayLoanModal";
 import { formatHealthFactor, healthLevel } from "@/lib/crosschain";
 import { formatToken, formatUsd } from "@/lib/format";
 
@@ -18,7 +20,16 @@ function amount(value: bigint, decimals: number, symbol: string) {
   return symbol === "USD" ? formatUsd(value, decimals) : `${formatToken(value, decimals, 2)} ${symbol}`;
 }
 
-function LoanRow({ loan, isLoading }: { loan: CrossChainLoan; isLoading: boolean }) {
+function LoanRow({
+  loan,
+  isLoading,
+  action,
+}: {
+  loan: CrossChainLoan;
+  isLoading: boolean;
+  /** The repay control for this protocol, or null once nothing is owed. */
+  action: React.ReactNode;
+}) {
   const isOpen = loan.debt > 0n;
   const health = loan.healthFactor === null ? null : formatHealthFactor(loan.healthFactor);
   const level = loan.healthFactor === null ? null : healthLevel(loan.healthFactor);
@@ -62,6 +73,7 @@ function LoanRow({ loan, isLoading }: { loan: CrossChainLoan; isLoading: boolean
           </Loadable>
           {isOpen && health ? <p className="text-muted mt-1 text-xs">Health</p> : null}
         </div>
+        {isOpen ? action : null}
       </div>
     </div>
   );
@@ -76,6 +88,10 @@ function LoanRow({ loan, isLoading }: { loan: CrossChainLoan; isLoading: boolean
 export function CrossChainLoans() {
   const { isConnected } = useAccount();
   const { loans, isConfigured, isLoading } = useCrossChainLoans();
+  // Hooks before the early return: a repay hook per protocol, since each one's approve
+  // target, argument shape and top-up story differ.
+  const aave = useRepayAave();
+  const morpho = useRepayMorpho();
 
   if (!isConnected || !isConfigured) return null;
 
@@ -97,11 +113,32 @@ export function CrossChainLoans() {
           [0, 1].map((i) => <Skeleton className="h-[74px] w-full rounded-2xl" key={i} />)
         ) : (
           <Stagger className="flex flex-col gap-3">
-            {loans.map((loan) => (
-              <StaggerItem key={loan.protocol}>
-                <LoanRow isLoading={isLoading} loan={loan} />
-              </StaggerItem>
-            ))}
+            {loans.map((loan) => {
+              const isAave = loan.protocol === "Aave V3";
+              const state = isAave ? aave : morpho;
+              return (
+                <StaggerItem key={loan.protocol}>
+                  <LoanRow
+                    isLoading={isLoading}
+                    loan={loan}
+                    action={
+                      <RepayLoanModal
+                        error={state.error}
+                        isConfirmed={state.isConfirmed}
+                        isPending={state.isPending}
+                        onConfirm={() =>
+                          isAave
+                            ? aave.repay(loan.repay.amount, loan.repay.balance)
+                            : morpho.repay(loan.repay.shares, loan.repay.amount)
+                        }
+                        protocol={loan.protocol}
+                        terms={loan.repay}
+                      />
+                    }
+                  />
+                </StaggerItem>
+              );
+            })}
           </Stagger>
         )}
       </Card.Content>
@@ -109,7 +146,7 @@ export function CrossChainLoans() {
       <Card.Footer>
         <Card.Description className="text-xs">
           {open > 0
-            ? `${open} position${open === 1 ? "" : "s"} still open. Repaying on either protocol emits the event the worker proves into this passport.`
+            ? `${open} position${open === 1 ? "" : "s"} still open. Repaying here settles the loan on its own chain and emits the event the worker proves into this passport.`
             : "Nothing outstanding. A repayment on either protocol is what the worker proves into this passport."}
         </Card.Description>
       </Card.Footer>

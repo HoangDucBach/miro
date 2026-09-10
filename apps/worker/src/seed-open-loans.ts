@@ -32,6 +32,11 @@ const AAVE_BORROW = 300n * 10n ** 18n;
 
 const MORPHO_COLLATERAL = 10_000n * 10n ** 18n;
 const MORPHO_BORROW = 1_000n * 10n ** 18n;
+// Interest buffer, minted on top of what is borrowed. Closing a Morpho position repays
+// shares, which price to slightly more than the principal the moment the market accrues --
+// and the demo loan token mints only to its owner, so a borrower holding exactly what they
+// borrowed can never repay in full from the dashboard.
+const MORPHO_INTEREST_BUFFER = 50n * 10n ** 18n;
 
 async function main() {
   const source = sourceProvider();
@@ -100,6 +105,9 @@ async function main() {
   await (
     await morpho.borrow(marketParams, MORPHO_BORROW, 0n, borrower.address, borrower.address)
   ).wait(2);
+
+  const loanToken = new Contract(loanTokenAddress, DEMO_TOKEN_ABI, deployer);
+  await (await loanToken.mint(borrower.address, MORPHO_INTEREST_BUFFER)).wait(2);
   await reportMorpho(morpho, marketId, borrower.address);
 
   console.log("[seed] done. Both positions are open; repay either one to feed the passport.");

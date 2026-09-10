@@ -1,9 +1,27 @@
 import {
-  createUseReadContract,
   createUseWriteContract,
   createUseSimulateContract,
+  createUseReadContract,
   createUseWatchContractEvent,
 } from 'wagmi/codegen'
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// AaveFaucet
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const aaveFaucetAbi = [
+  {
+    type: 'function',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    name: 'mint',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // AavePool
@@ -619,6 +637,37 @@ export const testUsdcAbi = [
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // React
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Wraps __{@link useWriteContract}__ with `abi` set to __{@link aaveFaucetAbi}__
+ */
+export const useWriteAaveFaucet = /*#__PURE__*/ createUseWriteContract({
+  abi: aaveFaucetAbi,
+})
+
+/**
+ * Wraps __{@link useWriteContract}__ with `abi` set to __{@link aaveFaucetAbi}__ and `functionName` set to `"mint"`
+ */
+export const useWriteAaveFaucetMint = /*#__PURE__*/ createUseWriteContract({
+  abi: aaveFaucetAbi,
+  functionName: 'mint',
+})
+
+/**
+ * Wraps __{@link useSimulateContract}__ with `abi` set to __{@link aaveFaucetAbi}__
+ */
+export const useSimulateAaveFaucet = /*#__PURE__*/ createUseSimulateContract({
+  abi: aaveFaucetAbi,
+})
+
+/**
+ * Wraps __{@link useSimulateContract}__ with `abi` set to __{@link aaveFaucetAbi}__ and `functionName` set to `"mint"`
+ */
+export const useSimulateAaveFaucetMint =
+  /*#__PURE__*/ createUseSimulateContract({
+    abi: aaveFaucetAbi,
+    functionName: 'mint',
+  })
 
 /**
  * Wraps __{@link useReadContract}__ with `abi` set to __{@link aavePoolAbi}__
