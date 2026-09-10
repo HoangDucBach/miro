@@ -19,6 +19,7 @@
     "typecheck": "turbo run typecheck",
     "worker": "pnpm --filter @miro/worker dev",
     "worker:e2e": "pnpm --filter @miro/worker e2e",
+    "worker:seed-loans": "pnpm --filter @miro/worker seed-loans",
     "web": "pnpm --filter @miro/web dev"
   },
   "devDependencies": {
