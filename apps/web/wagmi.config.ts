@@ -6,7 +6,9 @@ import { parseAbi } from "viem";
 // loader cannot resolve (it looks for a real types.js), and pulls in ethers besides.
 // abis.ts has no imports of its own, so this path loads cleanly.
 import {
+  AAVE_POOL_ABI,
   CREDIT_PASSPORT_ABI,
+  MORPHO_ABI,
   PASSPORT_POOL_ABI,
   TEST_USDC_ABI,
   PRICE_ORACLE_ABI,
@@ -44,6 +46,11 @@ export default defineConfig({
     { name: "PassportPool", abi: parseAbi(PASSPORT_POOL_ABI) },
     { name: "TestUsdc", abi: parseAbi(TEST_USDC_ABI) },
     { name: "PriceOracle", abi: parseAbi(PRICE_ORACLE_ABI) },
+    // Read-only on the frontend: the dashboard reports what a borrower already owes on
+    // Sepolia, it never supplies or borrows there on their behalf. Morpho's write
+    // functions are tuple-shaped and drop out through forFrontend anyway.
+    { name: "AavePool", abi: parseAbi(forFrontend(AAVE_POOL_ABI)) },
+    { name: "Morpho", abi: parseAbi(forFrontend(MORPHO_ABI)) },
   ],
   plugins: [react()],
 });

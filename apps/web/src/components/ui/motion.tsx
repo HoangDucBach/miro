@@ -84,14 +84,24 @@ export function NavHighlight({ isActive }: { isActive: boolean }) {
 }
 
 /** A list whose children arrive one after another rather than all at once. */
-export function Stagger({ children, delay = 0.04 }: { children: ReactNode; delay?: number }) {
+export function Stagger({
+  children,
+  className,
+  delay = 0.04,
+}: {
+  children: ReactNode;
+  /** Layout classes for the wrapper. Kept when motion is off, or a grid would collapse. */
+  className?: string;
+  delay?: number;
+}) {
   const reduced = useReducedMotion();
 
-  if (reduced) return <>{children}</>;
+  if (reduced) return <div className={className}>{children}</div>;
 
   return (
     <motion.div
       animate="shown"
+      className={className}
       initial="hidden"
       variants={{ shown: { transition: { staggerChildren: delay } } }}
     >
@@ -101,13 +111,14 @@ export function Stagger({ children, delay = 0.04 }: { children: ReactNode; delay
 }
 
 /** One row of a Stagger. Meaningless outside one -- the parent drives the timing. */
-export function StaggerItem({ children }: { children: ReactNode }) {
+export function StaggerItem({ children, className }: { children: ReactNode; className?: string }) {
   const reduced = useReducedMotion();
 
-  if (reduced) return <>{children}</>;
+  if (reduced) return <div className={className}>{children}</div>;
 
   return (
     <motion.div
+      className={className}
       transition={{ duration: 0.2, ease: EASE }}
       variants={{ hidden: { opacity: 0, y: 6 }, shown: { opacity: 1, y: 0 } }}
     >

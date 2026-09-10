@@ -8,6 +8,8 @@ import { Suspense } from "react";
 import { useAccount } from "wagmi";
 import { FaucetButton } from "@/components/FaucetButton";
 import { ActionModal } from "@/components/pool/ActionModal";
+import { CrossChainLoans } from "@/components/pool/CrossChainLoans";
+import { PoolStats } from "@/components/pool/PoolStats";
 import { Loadable } from "@/components/ui/Loadable";
 import { PositionTabs } from "@/components/pool/PositionTabs";
 import { useBorrow } from "@/hooks/useBorrow";
@@ -80,7 +82,7 @@ export default function PoolPage() {
   const risk = riskLevel(ltv, maxLtvBps);
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 px-6 py-8">
+    <main className="flex w-full max-w-4xl flex-1 flex-col gap-5 px-6 py-10">
       <NextLink
         className="text-muted hover:text-foreground flex w-fit items-center gap-2 text-sm transition-colors"
         href="/dashboard"
@@ -93,6 +95,8 @@ export default function PoolPage() {
         <Typography type="h2">All pools</Typography>
         {isConnected ? <FaucetButton /> : null}
       </div>
+
+      <PoolStats />
 
       {isConnected ? (
         <Card className="border-default shadow-panel border border-solid" variant="transparent">
@@ -262,6 +266,8 @@ export default function PoolPage() {
           </Card.Header>
         </Card>
       )}
+
+      <CrossChainLoans />
     </main>
   );
 }

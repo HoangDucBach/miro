@@ -47,6 +47,12 @@ export const PASSPORT_POOL_ABI = [
   "function principalSinceLastReport(address) public view returns (uint256)",
   "function lpDeposits(address) public view returns (uint256)",
   "function totalLPDeposits() public view returns (uint256)",
+  // Pool terms, so a UI can state the borrow rate and the LTV floor rather than
+  // restating numbers that would drift from a redeployed contract. MAX_LTV_BPS is
+  // deliberately absent: wagmi normalises it to the same hook name as maxLtvBps(address)
+  // and refuses to generate both.
+  "function INTEREST_BPS() public view returns (uint256)",
+  "function BASE_LTV_BPS() public view returns (uint256)",
   "event CollateralDeposited(address indexed borrower, uint256 amount)",
   "event CollateralWithdrawn(address indexed borrower, uint256 amount)",
   "event Borrowed(address indexed borrower, uint256 amount, uint256 newDebt)",
@@ -84,6 +90,10 @@ export const AAVE_POOL_ABI = [
   "function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external",
   "function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external",
   "function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf) external returns (uint256)",
+  // The borrower's whole Aave position in one call. Every amount is denominated in
+  // Aave's base currency (USD, 8 decimals), not in the underlying asset -- so a UI can
+  // show an outstanding loan without knowing which reserves were touched.
+  "function getUserAccountData(address user) external view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
   "event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)",
 ] as const;
 
@@ -100,6 +110,9 @@ export const MORPHO_ABI = [
   "function isLltvEnabled(uint256 lltv) external view returns (bool)",
   "function isIrmEnabled(address irm) external view returns (bool)",
   "function position(bytes32 id, address user) external view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)",
+  // Needed to price a position: `position` returns borrow *shares*, and only the
+  // market totals convert them back to assets (SharesMathLib.toAssetsUp).
+  "function market(bytes32 id) external view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)",
   "event Repay(bytes32 indexed id, address indexed caller, address indexed onBehalf, uint256 assets, uint256 shares)",
 ] as const;
 

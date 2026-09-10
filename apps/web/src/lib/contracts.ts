@@ -34,3 +34,35 @@ export const contracts = {
   testUsdc: required(process.env.NEXT_PUBLIC_TEST_USDC_CONTRACT, "NEXT_PUBLIC_TEST_USDC_CONTRACT"),
   priceOracle: required(process.env.NEXT_PUBLIC_PRICE_ORACLE_CONTRACT, "NEXT_PUBLIC_PRICE_ORACLE_CONTRACT"),
 } as const;
+
+/**
+ * The source protocols the passport scores from, on Sepolia. Optional, unlike the four
+ * above: a deployment that has not been pointed at Aave/Morpho still runs, it just hides
+ * the cross-chain loans panel instead of throwing at module load.
+ *
+ * `morphoMarketId` is keccak256(abi.encode(marketParams)) for the demo market. It is
+ * configured rather than derived so the client need not carry the oracle, IRM and LLTV
+ * just to hash them -- apps/worker/src/e2e.ts derives the same id when it creates the market.
+ */
+function optional(value: string | undefined): Address | null {
+  return value ? (value as Address) : null;
+}
+
+const aavePool = optional(process.env.NEXT_PUBLIC_AAVE_POOL_CONTRACT);
+const morpho = optional(process.env.NEXT_PUBLIC_MORPHO_CONTRACT);
+const morphoMarketId = process.env.NEXT_PUBLIC_MORPHO_MARKET_ID as `0x${string}` | undefined;
+const morphoLoanToken = optional(process.env.NEXT_PUBLIC_MORPHO_LOAN_TOKEN_CONTRACT);
+const morphoCollateralToken = optional(process.env.NEXT_PUBLIC_MORPHO_COLLATERAL_TOKEN_CONTRACT);
+
+export const sourceProtocols = {
+  aave: aavePool ? { pool: aavePool } : null,
+  morpho:
+    morpho && morphoMarketId && morphoLoanToken && morphoCollateralToken
+      ? {
+          morpho,
+          marketId: morphoMarketId,
+          loanToken: morphoLoanToken,
+          collateralToken: morphoCollateralToken,
+        }
+      : null,
+} as const;

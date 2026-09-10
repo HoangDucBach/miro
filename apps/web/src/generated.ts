@@ -6,6 +6,75 @@ import {
 } from 'wagmi/codegen'
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// AavePool
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const aavePoolAbi = [
+  {
+    type: 'function',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'onBehalfOf', type: 'address' },
+      { name: 'referralCode', type: 'uint16' },
+    ],
+    name: 'supply',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'interestRateMode', type: 'uint256' },
+      { name: 'referralCode', type: 'uint16' },
+      { name: 'onBehalfOf', type: 'address' },
+    ],
+    name: 'borrow',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'interestRateMode', type: 'uint256' },
+      { name: 'onBehalfOf', type: 'address' },
+    ],
+    name: 'repay',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'getUserAccountData',
+    outputs: [
+      { name: 'totalCollateralBase', type: 'uint256' },
+      { name: 'totalDebtBase', type: 'uint256' },
+      { name: 'availableBorrowsBase', type: 'uint256' },
+      { name: 'currentLiquidationThreshold', type: 'uint256' },
+      { name: 'ltv', type: 'uint256' },
+      { name: 'healthFactor', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    inputs: [
+      { name: 'reserve', type: 'address', indexed: true },
+      { name: 'user', type: 'address', indexed: true },
+      { name: 'repayer', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256' },
+      { name: 'useATokens', type: 'bool' },
+    ],
+    name: 'Repay',
+  },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // CreditPassport
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -199,6 +268,66 @@ export const creditPassportAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Morpho
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const morphoAbi = [
+  {
+    type: 'function',
+    inputs: [{ name: 'lltv', type: 'uint256' }],
+    name: 'isLltvEnabled',
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'irm', type: 'address' }],
+    name: 'isIrmEnabled',
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'id', type: 'bytes32' },
+      { name: 'user', type: 'address' },
+    ],
+    name: 'position',
+    outputs: [
+      { name: 'supplyShares', type: 'uint256' },
+      { name: 'borrowShares', type: 'uint128' },
+      { name: 'collateral', type: 'uint128' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'id', type: 'bytes32' }],
+    name: 'market',
+    outputs: [
+      { name: 'totalSupplyAssets', type: 'uint128' },
+      { name: 'totalSupplyShares', type: 'uint128' },
+      { name: 'totalBorrowAssets', type: 'uint128' },
+      { name: 'totalBorrowShares', type: 'uint128' },
+      { name: 'lastUpdate', type: 'uint128' },
+      { name: 'fee', type: 'uint128' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    inputs: [
+      { name: 'id', type: 'bytes32', indexed: true },
+      { name: 'caller', type: 'address', indexed: true },
+      { name: 'onBehalf', type: 'address', indexed: true },
+      { name: 'assets', type: 'uint256' },
+      { name: 'shares', type: 'uint256' },
+    ],
+    name: 'Repay',
+  },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PassportPool
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -298,6 +427,20 @@ export const passportPoolAbi = [
     type: 'function',
     inputs: [],
     name: 'totalLPDeposits',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'INTEREST_BPS',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'BASE_LTV_BPS',
     outputs: [{ type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -476,6 +619,101 @@ export const testUsdcAbi = [
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // React
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link aavePoolAbi}__
+ */
+export const useReadAavePool = /*#__PURE__*/ createUseReadContract({
+  abi: aavePoolAbi,
+})
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"getUserAccountData"`
+ */
+export const useReadAavePoolGetUserAccountData =
+  /*#__PURE__*/ createUseReadContract({
+    abi: aavePoolAbi,
+    functionName: 'getUserAccountData',
+  })
+
+/**
+ * Wraps __{@link useWriteContract}__ with `abi` set to __{@link aavePoolAbi}__
+ */
+export const useWriteAavePool = /*#__PURE__*/ createUseWriteContract({
+  abi: aavePoolAbi,
+})
+
+/**
+ * Wraps __{@link useWriteContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"supply"`
+ */
+export const useWriteAavePoolSupply = /*#__PURE__*/ createUseWriteContract({
+  abi: aavePoolAbi,
+  functionName: 'supply',
+})
+
+/**
+ * Wraps __{@link useWriteContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"borrow"`
+ */
+export const useWriteAavePoolBorrow = /*#__PURE__*/ createUseWriteContract({
+  abi: aavePoolAbi,
+  functionName: 'borrow',
+})
+
+/**
+ * Wraps __{@link useWriteContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"repay"`
+ */
+export const useWriteAavePoolRepay = /*#__PURE__*/ createUseWriteContract({
+  abi: aavePoolAbi,
+  functionName: 'repay',
+})
+
+/**
+ * Wraps __{@link useSimulateContract}__ with `abi` set to __{@link aavePoolAbi}__
+ */
+export const useSimulateAavePool = /*#__PURE__*/ createUseSimulateContract({
+  abi: aavePoolAbi,
+})
+
+/**
+ * Wraps __{@link useSimulateContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"supply"`
+ */
+export const useSimulateAavePoolSupply =
+  /*#__PURE__*/ createUseSimulateContract({
+    abi: aavePoolAbi,
+    functionName: 'supply',
+  })
+
+/**
+ * Wraps __{@link useSimulateContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"borrow"`
+ */
+export const useSimulateAavePoolBorrow =
+  /*#__PURE__*/ createUseSimulateContract({
+    abi: aavePoolAbi,
+    functionName: 'borrow',
+  })
+
+/**
+ * Wraps __{@link useSimulateContract}__ with `abi` set to __{@link aavePoolAbi}__ and `functionName` set to `"repay"`
+ */
+export const useSimulateAavePoolRepay = /*#__PURE__*/ createUseSimulateContract(
+  { abi: aavePoolAbi, functionName: 'repay' },
+)
+
+/**
+ * Wraps __{@link useWatchContractEvent}__ with `abi` set to __{@link aavePoolAbi}__
+ */
+export const useWatchAavePoolEvent = /*#__PURE__*/ createUseWatchContractEvent({
+  abi: aavePoolAbi,
+})
+
+/**
+ * Wraps __{@link useWatchContractEvent}__ with `abi` set to __{@link aavePoolAbi}__ and `eventName` set to `"Repay"`
+ */
+export const useWatchAavePoolRepayEvent =
+  /*#__PURE__*/ createUseWatchContractEvent({
+    abi: aavePoolAbi,
+    eventName: 'Repay',
+  })
 
 /**
  * Wraps __{@link useReadContract}__ with `abi` set to __{@link creditPassportAbi}__
@@ -707,6 +945,61 @@ export const useWatchCreditPassportAttestationProcessedEvent =
   })
 
 /**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link morphoAbi}__
+ */
+export const useReadMorpho = /*#__PURE__*/ createUseReadContract({
+  abi: morphoAbi,
+})
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link morphoAbi}__ and `functionName` set to `"isLltvEnabled"`
+ */
+export const useReadMorphoIsLltvEnabled = /*#__PURE__*/ createUseReadContract({
+  abi: morphoAbi,
+  functionName: 'isLltvEnabled',
+})
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link morphoAbi}__ and `functionName` set to `"isIrmEnabled"`
+ */
+export const useReadMorphoIsIrmEnabled = /*#__PURE__*/ createUseReadContract({
+  abi: morphoAbi,
+  functionName: 'isIrmEnabled',
+})
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link morphoAbi}__ and `functionName` set to `"position"`
+ */
+export const useReadMorphoPosition = /*#__PURE__*/ createUseReadContract({
+  abi: morphoAbi,
+  functionName: 'position',
+})
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link morphoAbi}__ and `functionName` set to `"market"`
+ */
+export const useReadMorphoMarket = /*#__PURE__*/ createUseReadContract({
+  abi: morphoAbi,
+  functionName: 'market',
+})
+
+/**
+ * Wraps __{@link useWatchContractEvent}__ with `abi` set to __{@link morphoAbi}__
+ */
+export const useWatchMorphoEvent = /*#__PURE__*/ createUseWatchContractEvent({
+  abi: morphoAbi,
+})
+
+/**
+ * Wraps __{@link useWatchContractEvent}__ with `abi` set to __{@link morphoAbi}__ and `eventName` set to `"Repay"`
+ */
+export const useWatchMorphoRepayEvent =
+  /*#__PURE__*/ createUseWatchContractEvent({
+    abi: morphoAbi,
+    eventName: 'Repay',
+  })
+
+/**
  * Wraps __{@link useReadContract}__ with `abi` set to __{@link passportPoolAbi}__
  */
 export const useReadPassportPool = /*#__PURE__*/ createUseReadContract({
@@ -780,6 +1073,24 @@ export const useReadPassportPoolTotalLpDeposits =
   /*#__PURE__*/ createUseReadContract({
     abi: passportPoolAbi,
     functionName: 'totalLPDeposits',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link passportPoolAbi}__ and `functionName` set to `"INTEREST_BPS"`
+ */
+export const useReadPassportPoolInterestBps =
+  /*#__PURE__*/ createUseReadContract({
+    abi: passportPoolAbi,
+    functionName: 'INTEREST_BPS',
+  })
+
+/**
+ * Wraps __{@link useReadContract}__ with `abi` set to __{@link passportPoolAbi}__ and `functionName` set to `"BASE_LTV_BPS"`
+ */
+export const useReadPassportPoolBaseLtvBps =
+  /*#__PURE__*/ createUseReadContract({
+    abi: passportPoolAbi,
+    functionName: 'BASE_LTV_BPS',
   })
 
 /**

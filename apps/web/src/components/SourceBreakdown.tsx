@@ -3,6 +3,7 @@
 import { Card, Skeleton } from "@heroui/react";
 import { useAccount } from "wagmi";
 import { usePassportSources } from "@/hooks/usePassportSources";
+import { ProtocolIcon } from "@/components/ui/ProtocolIcon";
 import { Stagger, StaggerItem } from "@/components/ui/motion";
 
 export function SourceBreakdown() {
@@ -43,7 +44,10 @@ export function SourceBreakdown() {
             {sources.map((s) => (
               <StaggerItem key={s.sourceId}>
                 <div className="flex items-baseline justify-between gap-4 py-1 text-sm">
-              <span className={s.count > 0n ? undefined : "text-muted"}>{s.label}</span>
+              <span className={`flex items-center gap-2 ${s.count > 0n ? "" : "text-muted"}`}>
+                <ProtocolIcon name={s.label} />
+                {s.label}
+              </span>
               <span className="flex items-baseline gap-3">
                 <span className="tabular-nums">
                   {s.count.toString()} repay{s.count === 1n ? "" : "s"}
