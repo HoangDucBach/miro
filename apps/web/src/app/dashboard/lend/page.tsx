@@ -43,7 +43,7 @@ export default function LendPage() {
   const usd = (v: bigint) => formatUsd(v, DECIMALS);
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 px-6 py-8">
+    <main className="flex w-full max-w-4xl flex-1 flex-col gap-5 px-6 py-10">
       <NextLink
         className="text-muted hover:text-foreground flex w-fit items-center gap-2 text-sm transition-colors"
         href="/dashboard"

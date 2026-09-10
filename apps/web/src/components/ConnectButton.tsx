@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Label, ListBox, Select } from "@heroui/react";
+import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
 import { useAccount, useConnect, useSwitchChain } from "wagmi";
 import { shortAddress } from "@/lib/address";
 
@@ -44,13 +44,27 @@ export function ConnectButton() {
     );
   }
 
+  // One button, not one per connector: a browser with six wallet extensions produced six
+  // buttons in a row, which overflowed the topbar. A dropdown holds any number.
   return (
-    <div className="flex gap-2">
-      {connectors.map((connector) => (
-        <Button key={connector.uid} isPending={isPending} onPress={() => connect({ connector })}>
-          {connector.name}
-        </Button>
-      ))}
-    </div>
+    <Dropdown>
+      <Dropdown.Trigger>
+        <Button isPending={isPending}>Connect wallet</Button>
+      </Dropdown.Trigger>
+      <Dropdown.Popover>
+        <Dropdown.Menu
+          onAction={(key) => {
+            const connector = connectors.find((c) => c.uid === String(key));
+            if (connector) connect({ connector });
+          }}
+        >
+          {connectors.map((connector) => (
+            <Dropdown.Item key={connector.uid} id={connector.uid} textValue={connector.name}>
+              <Label>{connector.name}</Label>
+            </Dropdown.Item>
+          ))}
+        </Dropdown.Menu>
+      </Dropdown.Popover>
+    </Dropdown>
   );
 }
