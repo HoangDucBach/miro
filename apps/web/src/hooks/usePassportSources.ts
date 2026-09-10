@@ -68,6 +68,10 @@ export function usePassportSources() {
     // The registry only changes when an owner registers a protocol, so this is close to
     // static; re-scanning it on every mount would be a dozen RPC calls for nothing.
     staleTime: 30 * 60_000,
+    // Opts out of the app-wide polling: a dozen eth_getLogs calls every fifteen seconds
+    // for a registry that changes when an owner adds a protocol. The topbar's refresh
+    // still forces it, via invalidateQueries.
+    refetchInterval: false,
     retry: false,
     queryFn: async () => {
       if (!client) return { crossChain: [], localReporters: [] };

@@ -1,4 +1,4 @@
-import { createConfig, http, type Config } from "wagmi";
+import { cookieStorage, createConfig, createStorage, http, type Config } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { cc3Testnet, sepolia } from "./chains";
 
@@ -24,4 +24,11 @@ export const wagmiConfig: Config = createConfig({
     [cc3Testnet.id]: http(process.env.NEXT_PUBLIC_CC3_RPC),
   },
   ssr: true,
+  // Cookies, not localStorage, because the server can read them: the root layout turns
+  // the cookie into wagmi's initial state, so a reload renders the connected address
+  // straight away and reconnects from a known connector rather than rediscovering it
+  // after hydration. localStorage under ssr:true is the combination wagmi's own docs
+  // warn off -- the server render always starts disconnected and reconnection races the
+  // wallet's provider announcement.
+  storage: createStorage({ storage: cookieStorage }),
 });

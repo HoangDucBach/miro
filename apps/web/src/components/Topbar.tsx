@@ -3,6 +3,7 @@
 import { Button, Drawer, useOverlayState } from "@heroui/react";
 import { HamburgerMenuIcon } from "@solar-icons/react/linear/hamburger-menu";
 import { ConnectButton } from "@/components/ConnectButton";
+import { RefreshButton } from "@/components/RefreshButton";
 import { BrandMark, NavLinks } from "@/components/Sidebar";
 import { SidebarProfile } from "@/components/SidebarProfile";
 
@@ -24,7 +25,8 @@ export function Topbar() {
         <BrandMark className="h-5" />
       </div>
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        <RefreshButton />
         <ConnectButton />
       </div>
 
