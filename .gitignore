@@ -26,3 +26,6 @@ apps/worker/.data/
 
 # Submission drafts — kept local, not part of the public repo
 docs/dorahacks-submission.md
+
+# SSH keys never belong in the repo
+*.pem
