@@ -68,24 +68,66 @@ async function main() {
   );
 
   const targets = watchTargetsFromEnv();
-  for (const target of targets) {
-    watchTarget(source, target, queue);
-  }
+  void pollTargets(source, targets, queue);
 
   console.log(
     `[worker] listening on ${targets.map((t) => `${t.label} (${t.address})`).join(", ")}, chainKey=${sepolia.chainKey}, concurrency=${concurrency}`,
   );
 }
 
-function watchTarget(source: JsonRpcProvider, target: WatchTarget, queue: Queue<RelayJobData>): void {
-  source.on({ address: target.address, topics: [target.topic0] }, async (log) => {
-    const txHash: string | undefined = log?.transactionHash;
-    const blockNumber: number | undefined = log?.blockNumber;
-    if (!txHash || blockNumber === undefined) return;
+/** How often to ask the source chain for new blocks. Sepolia produces one every 12s. */
+const POLL_INTERVAL_MS = 12_000;
+/** Largest eth_getLogs range per request; well under what public RPCs cap at. */
+const MAX_SCAN_SPAN = 2_000;
 
-    await enqueueRelayJob(queue, { txHash, eventKind: "created", blockNumber });
-    console.log(`[worker] queued ${target.label} ${txHash} @ block ${blockNumber}`);
-  });
+/**
+ * Polls eth_getLogs from a block cursor rather than subscribing with `provider.on`.
+ *
+ * ethers' subscription is a server-side filter (eth_newFilter + eth_getFilterChanges),
+ * and public RPC endpoints are load balanced: the filter exists on one backend, the next
+ * poll lands on another, and every call from then on fails with "filter not found" --
+ * which ethers logs and retries forever without ever recreating the filter. The worker
+ * stayed alive and stayed blind. A block cursor is stateless on the server side, so any
+ * backend answers it, and a range is re-asked rather than lost when a request fails.
+ *
+ * Starts at the current head: history is the e2e script's business, and jobs are keyed
+ * by tx hash, so re-scanning an overlap after an error cannot double-relay.
+ */
+async function pollTargets(
+  source: JsonRpcProvider,
+  targets: WatchTarget[],
+  queue: Queue<RelayJobData>,
+): Promise<void> {
+  let cursor = await source.getBlockNumber();
+  for (;;) {
+    try {
+      const head = await source.getBlockNumber();
+      if (head > cursor) {
+        const toBlock = Math.min(head, cursor + MAX_SCAN_SPAN);
+        for (const target of targets) {
+          const logs = await source.getLogs({
+            address: target.address,
+            topics: [target.topic0],
+            fromBlock: cursor + 1,
+            toBlock,
+          });
+          for (const log of logs) {
+            await enqueueRelayJob(queue, {
+              txHash: log.transactionHash,
+              eventKind: "created",
+              blockNumber: log.blockNumber,
+            });
+            console.log(`[worker] queued ${target.label} ${log.transactionHash} @ block ${log.blockNumber}`);
+          }
+        }
+        cursor = toBlock;
+      }
+    } catch (err) {
+      // The cursor is untouched, so the same range is asked again next tick.
+      console.error("[worker] scan failed, will retry:", err instanceof Error ? err.message : err);
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
 }
 
 /**
