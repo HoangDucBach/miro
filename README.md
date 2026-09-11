@@ -18,6 +18,8 @@ falls back on over-collateralization: good borrowers pay for bad ones.
 
 ## How it works
 
+![Architecture](docs/architecture.png)
+
 1. A borrower repays a loan on **Aave V3** or **Morpho Blue** — real, unmodified protocols
    on Ethereum Sepolia. Miro is not involved and asks nothing of anyone.
 2. A worker sees the `Repay` event, waits for the source block to be attested, fetches a

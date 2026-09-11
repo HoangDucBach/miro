@@ -1,0 +1,151 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Miro — architecture</title>
+<style>
+  html, body { margin: 0; background: #0b0b0b; }
+  svg { display: block; font-family: -apple-system, "Inter", "Segoe UI", Helvetica, Arial, sans-serif; }
+  .h  { fill: #f2f2f2; font-size: 22px; font-weight: 600; }
+  .h2 { fill: #f2f2f2; font-size: 17px; font-weight: 600; }
+  .t  { fill: #c9c9c9; font-size: 14px; }
+  .m  { fill: #8a8a8a; font-size: 12.5px; }
+  .k  { fill: #a5a4ff; font-size: 12.5px; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  .lbl{ fill: #8a8a8a; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .accent { fill: #a5a4ff; }
+  .zone { fill: none; stroke: #2a2a2a; stroke-width: 1.5; rx: 18; }
+  .card { fill: #161616; stroke: #2e2e2e; stroke-width: 1; rx: 12; }
+  .cardA{ fill: #17162a; stroke: #4b4aa8; stroke-width: 1; rx: 12; }
+  .arrow{ stroke: #a5a4ff; stroke-width: 2; fill: none; marker-end: url(#ah); }
+  .arrowM{ stroke: #555; stroke-width: 1.5; fill: none; marker-end: url(#ahm); stroke-dasharray: 5 5; }
+  .pill { fill: #a5a4ff; }
+  .pillT{ fill: #0b0b0b; font-size: 12px; font-weight: 700; }
+</style>
+<svg width="1600" height="900" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#a5a4ff"/>
+    </marker>
+    <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="60" y="58" class="h" style="font-size:26px">Miro — cross-chain credit passport</text>
+  <text x="60" y="84" class="m">A repayment on any lending protocol becomes a verifiable score on Creditcoin. No bridge, no oracle operator — a block proof.</text>
+
+  <!-- ===== Zone 1: Source chain ===== -->
+  <rect x="60" y="120" width="420" height="560" class="zone"/>
+  <text x="84" y="152" class="lbl">SOURCE CHAIN · ETHEREUM SEPOLIA</text>
+  <text x="84" y="178" class="m">Real, unmodified third-party contracts</text>
+
+  <rect x="84" y="204" width="372" height="120" class="card"/>
+  <text x="104" y="234" class="h2">Aave V3 Pool</text>
+  <text x="104" y="258" class="t">Borrower supplies, borrows, repays</text>
+  <text x="104" y="282" class="k">event Repay(reserve, user, repayer, amount, useATokens)</text>
+  <text x="104" y="304" class="m">Registered as a source · min 10 units (anti-dust)</text>
+
+  <rect x="84" y="344" width="372" height="120" class="card"/>
+  <text x="104" y="374" class="h2">Morpho Blue</text>
+  <text x="104" y="398" class="t">Isolated market, repay by shares</text>
+  <text x="104" y="422" class="k">event Repay(id, caller, onBehalf, assets, shares)</text>
+  <text x="104" y="444" class="m">Second, independent source → diversity bonus</text>
+
+  <rect x="84" y="484" width="372" height="60" class="card"/>
+  <text x="104" y="510" class="t">+ any protocol, any chain Creditcoin attests</text>
+  <text x="104" y="530" class="m">One <tspan class="k">setSource(config)</tspan> call. No redeploy, no code.</text>
+
+  <text x="84" y="600" class="m">Adding a source = describing its event:</text>
+  <text x="84" y="620" class="k">chainKey · emitter · topic0 · where the borrower</text>
+  <text x="84" y="638" class="k">and the amount sit in the log · min amount · sign</text>
+
+  <!-- ===== Zone 2: Worker ===== -->
+  <rect x="560" y="120" width="400" height="560" class="zone"/>
+  <text x="584" y="152" class="lbl">RELAY WORKER · OFF-CHAIN, TRUSTLESS</text>
+  <text x="584" y="178" class="m">Can only forward proofs. Cannot forge or edit a score.</text>
+
+  <g>
+    <circle cx="606" cy="228" r="13" class="pill"/><text x="601" y="233" class="pillT">1</text>
+    <text x="632" y="224" class="h2">Scan</text>
+    <text x="632" y="244" class="t">eth_getLogs from a persisted block cursor</text>
+    <text x="632" y="262" class="m">Redis-backed · 2-block confirmation lag · all sources in one request</text>
+  </g>
+  <g>
+    <circle cx="606" cy="318" r="13" class="pill"/><text x="601" y="323" class="pillT">2</text>
+    <text x="632" y="314" class="h2">Wait for attestation</text>
+    <text x="632" y="334" class="t">Creditcoin validators attest the Sepolia block</text>
+    <text x="632" y="352" class="m">~7 min on testnet · BullMQ job, retried with backoff</text>
+  </g>
+  <g>
+    <circle cx="606" cy="408" r="13" class="pill"/><text x="601" y="413" class="pillT">3</text>
+    <text x="632" y="404" class="h2">Fetch proof</text>
+    <text x="632" y="424" class="t">USC prover: Merkle proof of the receipt</text>
+    <text x="632" y="442" class="m">+ continuity proof from the attested header</text>
+  </g>
+  <g>
+    <circle cx="606" cy="498" r="13" class="pill"/><text x="601" y="503" class="pillT">4</text>
+    <text x="632" y="494" class="h2">Submit</text>
+    <text x="632" y="514" class="k">CreditPassport.processAttestation(proof)</text>
+    <text x="632" y="532" class="m">Anyone can call this. The chain does the checking.</text>
+  </g>
+
+  <rect x="584" y="572" width="352" height="84" class="card"/>
+  <text x="604" y="598" class="t">Same event, replayed twice?</text>
+  <text x="604" y="618" class="m">Rejected on chain: keyed on</text>
+  <text x="604" y="636" class="k">(chainKey, blockHeight, txIndex)</text>
+
+  <!-- ===== Zone 3: Creditcoin ===== -->
+  <rect x="1040" y="120" width="500" height="560" class="zone"/>
+  <text x="1064" y="152" class="lbl">CREDITCOIN CC3 · PASSPORT PROTOCOL</text>
+  <text x="1064" y="178" class="m">Everything below is enforced by contract, not by us</text>
+
+  <rect x="1064" y="204" width="452" height="76" class="cardA"/>
+  <text x="1084" y="232" class="h2">Block Prover precompile <tspan class="k">0x0FD2</tspan></text>
+  <text x="1084" y="254" class="t">Verifies the Merkle + continuity proof against the attested header</text>
+  <text x="1084" y="270" class="m">Returns the raw receipt log — or reverts</text>
+
+  <rect x="1064" y="300" width="452" height="180" class="cardA"/>
+  <text x="1084" y="328" class="h2">CreditPassport</text>
+  <text x="1084" y="352" class="t">Decodes the log by <tspan class="k">SourceConfig</tspan> · needs <tspan class="k">receiptStatus == 1</tspan></text>
+  <text x="1084" y="372" class="t">Replay guard · anti-dust floor · liquidations subtract</text>
+  <text x="1084" y="404" class="m">score =</text>
+  <text x="1084" y="424" class="k">  repays × 10  +  (sources − 1) × 20</text>
+  <text x="1084" y="442" class="k">+ age (5 / 30 days, cap 6)  −  negatives × 50</text>
+  <text x="1084" y="466" class="m">One passport per address. Readable by any contract on CC3.</text>
+
+  <rect x="1064" y="500" width="452" height="156" class="cardA"/>
+  <text x="1084" y="528" class="h2">PassportPool</text>
+  <text x="1084" y="552" class="t">Native tCTC collateral → tUSDC loans, 5% flat</text>
+  <text x="1084" y="574" class="k">maxLTV = 50% + score × 0.1%   (cap 75%)</text>
+  <text x="1084" y="596" class="t">Reads <tspan class="k">scoreOf()</tspan> to size the loan …</text>
+  <text x="1084" y="616" class="t">… and reports full repayments back as a local source</text>
+  <text x="1084" y="638" class="m" style="font-size:12px">The loop closes: the pool that reads the score also feeds it. No proof needed.</text>
+
+  <!-- ===== Arrows ===== -->
+  <!-- Aave/Morpho -> worker step 1 -->
+  <path d="M456 264 C 520 264, 520 236, 588 236" class="arrow"/>
+  <path d="M456 404 C 520 404, 520 246, 588 246" class="arrow"/>
+  <text x="470" y="222" class="m">Repay log</text>
+
+  <!-- worker step 4 -> precompile -->
+  <path d="M936 504 C 1000 504, 1000 242, 1060 242" class="arrow"/>
+  <text x="960" y="360" class="m" transform="rotate(-90 960 360)">proof + log</text>
+
+  <!-- precompile -> passport -->
+  <path d="M1290 282 L1290 298" class="arrow"/>
+  <!-- passport <-> pool -->
+  <path d="M1180 482 L1180 498" class="arrow"/>
+  <path d="M1400 498 L1400 482" class="arrow"/>
+  <text x="1192" y="494" class="m">scoreOf</text>
+  <text x="1300" y="494" class="m">reportRepay</text>
+
+  <!-- ===== Web app bar ===== -->
+  <rect x="60" y="712" width="1480" height="120" class="zone"/>
+  <text x="84" y="744" class="lbl">WEB APP · NEXT.JS + WAGMI</text>
+  <text x="84" y="772" class="t">Passport with score breakdown and per-source history · Pool status, borrow, lend</text>
+  <text x="84" y="796" class="t">Open loans on Aave and Morpho read live from Sepolia — <tspan class="accent">and repaid in-app</tspan>, so the whole loop runs from one screen</text>
+  <text x="84" y="818" class="m">Reads CC3 and Sepolia at once regardless of the wallet's chain · polls every block · nothing indexed off-chain</text>
+
+  <path d="M270 712 L270 684" class="arrowM"/>
+  <path d="M1290 712 L1290 684" class="arrowM"/>
+  <text x="1440" y="820" class="m" text-anchor="end">github.com/HoangDucBach/miro</text>
+</svg>
