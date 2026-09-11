@@ -1,45 +1,47 @@
-# Demo Video Script (≤5 min)
+# Demo script
 
-> Backing implementation: [apps/worker/src/e2e.ts](../apps/worker/src/e2e.ts).
-> Attestation wait is minutes-scale on testnet — **pre-record segments, do not run this
-> fully live.**
+Recorded as four shorts against the live deployments, then cut together. Attestation on
+CC3 Testnet trails Sepolia by about seven minutes, so the flow cannot be one take.
 
-## Segments
+## Before recording
 
-1. **(0:00–0:30) Problem framing** — a borrower's repayment history is real, but stuck
-   wherever it was earned. No lender on a different chain can see it without a bridge or a
-   centralized oracle. Miro attests it instead — cryptographically, once, portably.
-2. **(0:30–1:20) A real repayment on Aave, not a fake one** — faucet DAI on Aave V3's real
-   Sepolia Pool, supply, borrow, repay in full. Show the `Repay` tx on Sepolia Etherscan —
-   this is the credibility beat: Aave is a live third-party protocol, we wrote none of it.
-3. **(1:20–2:00) Attestcoin relay (pre-recorded, sped up)** — worker log output: `Repay`
-   event detected → `waitUntilHeightAttested` → proof fetched → `processAttestation`
-   submitted. Cut to `CreditPassport.scoreOf(borrower)` on the CC3 explorer ticking up from
-   0 to 10.
-4. **(2:00–2:50) A second, different protocol — Morpho** — supply collateral, borrow,
-   repay in full on a Morpho Blue market. Relay it the same way. Show `scoreOf` jump by
-   more than just the repay points: the **diversity bonus** for a second distinct source —
-   this is the beat that makes "cross-chain, not single-protocol" visible on screen.
-5. **(2:50–3:30) The score means something concrete** — show `PassportPool.maxLtvBps()`
-   for this borrower before vs. after: base 50%, boosted by score, capped at 75% — never
-   100%, always over-collateralized, stated on screen so it isn't overclaimed.
-6. **(3:30–4:20) Borrow, repay, and the loop closes** — deposit native tCTC as collateral,
-   borrow tUSDC at the boosted rate, repay in full. Show `scoreOf` tick up **again** — the
-   same pool that just read the score also fed it, a third distinct source.
-7. **(4:20–5:00) Trust model close** — one slide: what's cryptographically enforced
-   (receipt-status check, replay protection, per-source anti-dust floor, config-driven
-   decoding proven against two independently-verified event shapes) vs. what's an honest
-   MVP limitation (sybil/self-repay farming still costs only gas + interest; no KYC; only
-   Sepolia exists as a source chain on the public CC3 Testnet today, though nothing in the
-   contract hardcodes that). Link to
-   [attestcoin-integration.md](./attestcoin-integration.md).
+- Fresh wallet: Sepolia ETH ≥ 0.05, tCTC ≥ 100, score 0.
+- `E2E_BORROWER_PRIVATE_KEY` set to it, then `pnpm worker:seed-loans` — opens ~300 LINK of
+  debt on Aave (health ≈ 2.5) and 1,000 tokens on Morpho, with enough of each asset in the
+  wallet to close them in-app. Run it once; a second run stacks another position.
+- Worker up and scanning (`docker compose logs worker` shows the cursor advancing).
+- Wallet on Sepolia. Reload the app once to confirm the session survives it.
 
-## TODO
+## 1 · Landing and a blank passport (~30 s)
 
-- [ ] Record each segment against real Sepolia + CC3 Testnet deployments, once
-      [technical-spec.md §2.10](./technical-spec.md#210-migration-to-the-cross-chain-credit-passport-current-design)'s
-      remaining checklist items are done
-- [ ] Confirm Aave's Sepolia Faucet actually mints without friction for a fresh wallet —
-      first live run will tell; have a fallback ready if it's permissioned
-- [ ] Confirm the Morpho market bootstrap (LLTV/IRM enablement) live before recording
-- [ ] Decide on screen-capture tool and narration approach
+Landing, then `/dashboard`. Score 0, three registered sources, none credited. Pools: 50%
+LTV, and under it two open loans on Aave and Morpho, read live from Sepolia. Etherscan for
+the borrow transactions if the beat needs proof it is real.
+
+## 2 · Repay in-app (~60 s), then wait
+
+`/dashboard/pool` → Loans on other chains → `Repay` on Aave. Two signatures. The row
+flips to Settled within a poll. Then the same on Morpho.
+
+Cut. Wait ~8 minutes. Tail the worker log meanwhile.
+
+## 3 · Relay and score (~40 s)
+
+Worker log: `queued` → `not yet attested … retrying` → `submitted`. Passport: score
+0 → 10 after Aave, 10 → 40 after Morpho (two repays, plus the diversity bonus for a second
+source). Sources show one repay each. Pools: LTV 50% → 54%.
+
+## 4 · The loop closes on Creditcoin (~60 s)
+
+Wallet to CC3. Deposit 100 tCTC — credit limit reads $54 at the boosted LTV. Borrow 30
+tUSDC, repay 31.5 (5% flat; faucet tUSDC first if needed). Passport: 40 → 70 immediately —
+PassportPool reports as a local source, no proof required — and LTV to 57%.
+
+## Traps
+
+- Repay below `MIN_CREDIT_LOAN` (10 tUSDC cumulative principal) is not reported.
+- Both worker instances must not run at once: the loser's submit reverts on replay
+  protection. Harmless, but the log shows a failure.
+- If the score has not moved ten minutes after `submitted`, check the worker log before
+  suspecting the contract; attestation has been slower than seven minutes.
+- Re-recording needs a fresh wallet or another seed run; repaid positions do not reopen.
