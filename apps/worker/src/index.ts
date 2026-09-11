@@ -1,5 +1,5 @@
 import "dotenv/config";
-import type { Contract, JsonRpcProvider } from "ethers";
+import type { Contract } from "ethers";
 import { EVENT_TOPICS } from "@miro/shared";
 import {
   ATTESTATION_POLL_MS,
@@ -12,21 +12,17 @@ import {
 import { makeHostedProofBuilder } from "./lib/proof.js";
 import { passportContract, submitProof } from "./lib/submitter.js";
 import { createRedisConnection, createRelayQueue, createRelayWorker, enqueueRelayJob } from "./lib/queue.js";
+import { LogScanner, type ScanTarget } from "./lib/scanner.js";
 import type { Job, RelayJobData } from "./lib/queue.js";
 import type { Queue } from "bullmq";
 import type { proofProvider, chainInfo } from "@gluwa/usc-sdk";
 
 /** One (emitter, topic) pair to watch on Sepolia. Adding a new source protocol later is
  *  just another entry here plus a matching CreditPassport.setSource(...) registration --
- *  nothing about the listener code itself is specific to Aave or Morpho. */
-interface WatchTarget {
-  label: string;
-  address: string;
-  topic0: string;
-}
-
-export function watchTargetsFromEnv(): WatchTarget[] {
-  const targets: WatchTarget[] = [];
+ *  nothing about the scanner is specific to Aave or Morpho, and every target rides the
+ *  same eth_getLogs request. */
+export function watchTargetsFromEnv(): ScanTarget[] {
+  const targets: ScanTarget[] = [];
   const aavePool = process.env.AAVE_POOL_CONTRACT;
   if (aavePool) targets.push({ label: "Aave Repay", address: aavePool, topic0: EVENT_TOPICS.AaveRepay });
   const morpho = process.env.MORPHO_CONTRACT;
@@ -68,7 +64,14 @@ async function main() {
   );
 
   const targets = watchTargetsFromEnv();
-  void pollTargets(source, targets, queue);
+  // The cursor shares the queue's Redis, keyed by chain so a second source chain later
+  // gets its own. SCAN_LOOKBACK_BLOCKS lets a fresh deployment pick up events emitted
+  // before it started; a restart ignores it and resumes the saved cursor.
+  const scanner = new LogScanner(source, createRedisConnection(), targets, {
+    cursorKey: `scanner:cursor:${sepolia.chainKey}`,
+    initialLookback: Number(process.env.SCAN_LOOKBACK_BLOCKS ?? "0"),
+  });
+  void runScanner(scanner, queue);
 
   console.log(
     `[worker] listening on ${targets.map((t) => `${t.label} (${t.address})`).join(", ")}, chainKey=${sepolia.chainKey}, concurrency=${concurrency}`,
@@ -77,53 +80,20 @@ async function main() {
 
 /** How often to ask the source chain for new blocks. Sepolia produces one every 12s. */
 const POLL_INTERVAL_MS = 12_000;
-/** Largest eth_getLogs range per request; well under what public RPCs cap at. */
-const MAX_SCAN_SPAN = 2_000;
 
 /**
- * Polls eth_getLogs from a block cursor rather than subscribing with `provider.on`.
- *
- * ethers' subscription is a server-side filter (eth_newFilter + eth_getFilterChanges),
- * and public RPC endpoints are load balanced: the filter exists on one backend, the next
- * poll lands on another, and every call from then on fails with "filter not found" --
- * which ethers logs and retries forever without ever recreating the filter. The worker
- * stayed alive and stayed blind. A block cursor is stateless on the server side, so any
- * backend answers it, and a range is re-asked rather than lost when a request fails.
- *
- * Starts at the current head: history is the e2e script's business, and jobs are keyed
- * by tx hash, so re-scanning an overlap after an error cannot double-relay.
+ * Drives the scanner forever. The loop owns the timer and the queue; the scanner owns
+ * the cursor and the RPC (see lib/scanner.ts for why it is a cursor and not a filter).
+ * A tick that throws is logged and retried next interval with the cursor unchanged.
  */
-async function pollTargets(
-  source: JsonRpcProvider,
-  targets: WatchTarget[],
-  queue: Queue<RelayJobData>,
-): Promise<void> {
-  let cursor = await source.getBlockNumber();
+async function runScanner(scanner: LogScanner, queue: Queue<RelayJobData>): Promise<void> {
   for (;;) {
     try {
-      const head = await source.getBlockNumber();
-      if (head > cursor) {
-        const toBlock = Math.min(head, cursor + MAX_SCAN_SPAN);
-        for (const target of targets) {
-          const logs = await source.getLogs({
-            address: target.address,
-            topics: [target.topic0],
-            fromBlock: cursor + 1,
-            toBlock,
-          });
-          for (const log of logs) {
-            await enqueueRelayJob(queue, {
-              txHash: log.transactionHash,
-              eventKind: "created",
-              blockNumber: log.blockNumber,
-            });
-            console.log(`[worker] queued ${target.label} ${log.transactionHash} @ block ${log.blockNumber}`);
-          }
-        }
-        cursor = toBlock;
+      for (const { target, txHash, blockNumber } of await scanner.tick()) {
+        await enqueueRelayJob(queue, { txHash, eventKind: "created", blockNumber });
+        console.log(`[worker] queued ${target.label} ${txHash} @ block ${blockNumber}`);
       }
     } catch (err) {
-      // The cursor is untouched, so the same range is asked again next tick.
       console.error("[worker] scan failed, will retry:", err instanceof Error ? err.message : err);
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
